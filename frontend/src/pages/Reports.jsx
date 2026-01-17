@@ -960,14 +960,33 @@ export default function Reports() {
                       try {
                         // Helper function to format numbers without exponential notation
                         const formatNumber = (num) => {
-                          if (num === 0 || !num) return '0'
-                          const str = num.toString()
-                          // Check if it's in exponential notation
-                          if (str.includes('e') || str.includes('E')) {
-                            return Number(num).toFixed(0).replace(/\.?0+$/, '')
+                          // Handle null, undefined, or NaN
+                          if (num === null || num === undefined || num === '' || isNaN(num)) {
+                            return '0'
                           }
-                          // Convert to fixed decimal and remove trailing zeros
-                          return Number(num).toFixed(0).replace(/\.?0+$/, '')
+                          
+                          // Convert to number and round to integer
+                          const numValue = Number(num)
+                          if (isNaN(numValue)) return '0'
+                          
+                          // Round to integer
+                          const intNum = Math.round(numValue)
+                          
+                          // Convert to string - this will never produce exponential notation for reasonable numbers
+                          let numStr = String(intNum)
+                          
+                          // If somehow exponential notation appears, use alternative method
+                          if (numStr.includes('e') || numStr.includes('E')) {
+                            // For very large numbers, use a more reliable method
+                            numStr = intNum.toString()
+                            if (numStr.includes('e') || numStr.includes('E')) {
+                              // Last resort: manually construct string
+                              const absNum = Math.abs(intNum)
+                              numStr = intNum < 0 ? '-' + absNum.toString() : absNum.toString()
+                            }
+                          }
+                          
+                          return numStr
                         }
                         
                         // Dynamic import of jsPDF
@@ -1099,12 +1118,14 @@ export default function Reports() {
                           doc.text(`${parseFloat(emp.total_hours || 0).toFixed(2)} hrs`, tableStartX + 75, yPos)
                           
                           // Hour Rate (right aligned)
-                          doc.text(`₹${formatNumber(parseFloat(emp.hour_rate || 0))}`, tableStartX + 105, yPos)
+                          const hourRateValue = formatNumber(parseFloat(emp.hour_rate || 0))
+                          doc.text(`₹${hourRateValue}`, tableStartX + 105, yPos)
                           
                           // Salary (right aligned, bold, green)
                           doc.setFont(undefined, 'bold')
                           doc.setTextColor(16, 185, 129) // green-500
-                          doc.text(`₹${formatNumber(parseFloat(emp.salary || 0))}`, tableStartX + 135, yPos)
+                          const salaryValue = formatNumber(parseFloat(emp.salary || 0))
+                          doc.text(`₹${salaryValue}`, tableStartX + 135, yPos)
                           doc.setTextColor(0, 0, 0) // Reset to black
                           
                           yPos += 6
@@ -1125,7 +1146,10 @@ export default function Reports() {
                         doc.text('Grand Total Salary:', tableStartX + 100, yPos + 7)
                         doc.setTextColor(22, 163, 74) // green-600
                         doc.setFontSize(12)
-                        doc.text(`₹${formatNumber(monthData.total_salary)}`, tableStartX + 135, yPos + 7)
+                        // Format grand total number cleanly
+                        const grandTotalValue = formatNumber(monthData.total_salary)
+                        // Use simple text positioning without options that might cause rendering issues
+                        doc.text(`₹${grandTotalValue}`, tableStartX + 135, yPos + 7)
                         
                         // Page number
                         const totalPages = doc.internal.pages.length - 1
