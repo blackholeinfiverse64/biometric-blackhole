@@ -18,27 +18,21 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Configure CORS to allow requests from Vercel frontend and localhost for development
-# Get allowed origins from environment variable or use defaults
-allowed_origins = os.environ.get('ALLOWED_ORIGINS', '').split(',') if os.environ.get('ALLOWED_ORIGINS') else [
-    "https://biometric-blackhole.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173"
-]
+# Configure CORS - Allow all origins for now (can be restricted later via environment variable)
+# This fixes CORS issues with Vercel frontend
+CORS(app, 
+     origins="*",  # Allow all origins - change to specific list in production if needed
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     supports_credentials=False)
 
-# Remove empty strings from list
-allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
-
-CORS(app, resources={
-    r"/api/*": {
-        "origins": allowed_origins,
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
-    }
-}, supports_credentials=True)
+# Add CORS headers manually as fallback
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # Create temp directory for file uploads
 UPLOAD_FOLDER = tempfile.mkdtemp()
