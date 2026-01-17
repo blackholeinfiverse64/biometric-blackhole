@@ -180,5 +180,9 @@ def get_statistics():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    # Get port from environment variable (for Render deployment) or default to 5000
+    port = int(os.environ.get('PORT', 5000))
+    # Debug mode only in development (not in production)
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, port=port, host='0.0.0.0')
 

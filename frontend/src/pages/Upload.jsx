@@ -3,6 +3,7 @@ import { Upload as UploadIcon, File, Calendar, X, Download, Loader2 } from 'luci
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import DateCalendar from '../components/DateCalendar'
+import config from '../config'
 
 export default function Upload() {
   const navigate = useNavigate()
@@ -50,7 +51,7 @@ export default function Upload() {
     formData.append('selected_dates', JSON.stringify(selectedDates))
 
     try {
-      const response = await axios.post('/api/process', formData, {
+      const response = await axios.post(config.getApiUrl('/api/process'), formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -70,7 +71,7 @@ export default function Upload() {
   const handleDownload = () => {
     if (result?.output_file) {
       const filename = result.output_file.split(/[/\\]/).pop()
-      window.open(`/api/download?filename=${filename}`, '_blank')
+      window.open(config.getApiUrl(`/api/download?filename=${filename}`), '_blank')
     }
   }
 

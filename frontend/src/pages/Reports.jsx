@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar } from 'lucide-react'
+import config from '../config'
 import {
   BarChart,
   Bar,
@@ -93,7 +94,7 @@ export default function Reports() {
   const handleDownload = () => {
     if (data?.output_file) {
       const filename = data.output_file.split(/[/\\]/).pop()
-      window.open(`/api/download?filename=${filename}`, '_blank')
+      window.open(config.getApiUrl(`/api/download?filename=${filename}`), '_blank')
     }
   }
 
