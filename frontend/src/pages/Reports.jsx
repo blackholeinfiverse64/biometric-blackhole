@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar } from 'lucide-react'
+import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X } from 'lucide-react'
 import config from '../config'
 import {
   BarChart,
@@ -36,6 +36,20 @@ export default function Reports() {
   const [selectedFinalizedMonth, setSelectedFinalizedMonth] = useState('')
   const [showDeleteFinalizedModal, setShowDeleteFinalizedModal] = useState(false)
   const [monthToDelete, setMonthToDelete] = useState('')
+  const [manualUsers, setManualUsers] = useState(() => {
+    // Load from localStorage if available
+    const stored = localStorage.getItem('manualUsers')
+    return stored ? JSON.parse(stored) : []
+  })
+  const [showAddManualUserModal, setShowAddManualUserModal] = useState(false)
+  const [manualUserForm, setManualUserForm] = useState({
+    employee_id: '',
+    employee_name: '',
+    total_hours: '',
+    hour_rate: '',
+    is_manual: true // Flag to identify manual users
+  })
+  const [editingManualUser, setEditingManualUser] = useState(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -62,7 +76,10 @@ export default function Reports() {
     )
   }
 
-  const { monthly_summary, daily_report, statistics } = data
+  const { monthly_summary: originalMonthlySummary, daily_report, statistics } = data
+  
+  // Merge manual users with monthly_summary
+  const monthly_summary = [...originalMonthlySummary, ...manualUsers]
 
   // Prepare chart data
   const topEmployees = monthly_summary
@@ -298,6 +315,23 @@ export default function Reports() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Monthly Summary</h3>
+          <button
+            onClick={() => {
+              setManualUserForm({
+                employee_id: '',
+                employee_name: '',
+                total_hours: '',
+                hour_rate: '',
+                is_manual: true
+              })
+              setEditingManualUser(null)
+              setShowAddManualUserModal(true)
+            }}
+            className="btn-primary flex items-center space-x-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Manual User</span>
+          </button>
           {Object.keys(selectedEmployees).filter(id => selectedEmployees[id]).length > 0 && (
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2">
@@ -435,10 +469,10 @@ export default function Reports() {
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {emp.present_days} days
+                      {emp.is_manual ? '-' : (emp.present_days || 0)} days
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {emp.absent_days} days
+                      {emp.is_manual ? '-' : (emp.absent_days || 0)} days
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                       {parseFloat(emp.total_hours).toFixed(2)} hrs
@@ -1382,6 +1416,155 @@ export default function Reports() {
                 className="btn-danger"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Manual User Modal */}
+      {showAddManualUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {editingManualUser ? 'Edit Manual User' : 'Add Manual User'}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Employee ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={manualUserForm.employee_id}
+                  onChange={(e) => setManualUserForm({ ...manualUserForm, employee_id: e.target.value })}
+                  className="input-field"
+                  placeholder="Enter employee ID"
+                  disabled={!!editingManualUser}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Employee Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={manualUserForm.employee_name}
+                  onChange={(e) => setManualUserForm({ ...manualUserForm, employee_name: e.target.value })}
+                  className="input-field"
+                  placeholder="Enter employee name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Total Hours <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={manualUserForm.total_hours}
+                  onChange={(e) => {
+                    const hours = parseFloat(e.target.value) || 0
+                    const rate = parseFloat(manualUserForm.hour_rate) || 0
+                    setManualUserForm({ ...manualUserForm, total_hours: e.target.value })
+                  }}
+                  className="input-field"
+                  placeholder="Enter total hours"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hour Rate (Optional)
+                </label>
+                <div className="flex items-center space-x-1">
+                  <span className="text-sm text-gray-600">₹</span>
+                  <input
+                    type="number"
+                    value={manualUserForm.hour_rate}
+                    onChange={(e) => setManualUserForm({ ...manualUserForm, hour_rate: e.target.value })}
+                    className="input-field"
+                    placeholder="Enter hour rate"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowAddManualUserModal(false)
+                  setEditingManualUser(null)
+                  setManualUserForm({
+                    employee_id: '',
+                    employee_name: '',
+                    total_hours: '',
+                    hour_rate: '',
+                    is_manual: true
+                  })
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!manualUserForm.employee_id || !manualUserForm.employee_name || !manualUserForm.total_hours) {
+                    alert('Please fill all required fields')
+                    return
+                  }
+                  
+                  const newUser = {
+                    employee_id: parseInt(manualUserForm.employee_id),
+                    employee_name: manualUserForm.employee_name,
+                    total_hours: parseFloat(manualUserForm.total_hours) || 0,
+                    present_days: 0,
+                    absent_days: 0,
+                    auto_assigned_days: 0,
+                    is_manual: true
+                  }
+                  
+                  let updatedUsers
+                  if (editingManualUser) {
+                    // Update existing manual user
+                    updatedUsers = manualUsers.map(u => 
+                      u.employee_id === editingManualUser.employee_id ? newUser : u
+                    )
+                  } else {
+                    // Check if ID already exists
+                    if (manualUsers.find(u => u.employee_id === newUser.employee_id) || 
+                        originalMonthlySummary.find(e => e.employee_id === newUser.employee_id)) {
+                      alert('Employee ID already exists')
+                      return
+                    }
+                    updatedUsers = [...manualUsers, newUser]
+                  }
+                  
+                  setManualUsers(updatedUsers)
+                  localStorage.setItem('manualUsers', JSON.stringify(updatedUsers))
+                  
+                  // Set hour rate if provided
+                  if (manualUserForm.hour_rate) {
+                    setHourRates({
+                      ...hourRates,
+                      [newUser.employee_id]: parseFloat(manualUserForm.hour_rate)
+                    })
+                  }
+                  
+                  setShowAddManualUserModal(false)
+                  setEditingManualUser(null)
+                  setManualUserForm({
+                    employee_id: '',
+                    employee_name: '',
+                    total_hours: '',
+                    hour_rate: '',
+                    is_manual: true
+                  })
+                }}
+                className="btn-primary"
+              >
+                {editingManualUser ? 'Update' : 'Add'} User
               </button>
             </div>
           </div>
