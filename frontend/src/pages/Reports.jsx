@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save } from 'lucide-react'
+import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -20,13 +20,21 @@ export default function Reports() {
   const [data, setData] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [hourRates, setHourRates] = useState({}) // Object with employee_id as key
-  const [activeTab, setActiveTab] = useState('summary') // 'summary' or 'confirmed'
+  const [activeTab, setActiveTab] = useState('summary') // 'summary', 'confirmed', or 'finalized'
   const [confirmedSalaries, setConfirmedSalaries] = useState([]) // Array of confirmed salaries
   const [selectedEmployees, setSelectedEmployees] = useState({}) // Object with employee_id as key for selection
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [selectedEmployeeForAction, setSelectedEmployeeForAction] = useState(null)
   const [editFormData, setEditFormData] = useState({ total_hours: '', hour_rate: '', salary: '' })
+  const [finalizedSalaries, setFinalizedSalaries] = useState(() => {
+    // Load from localStorage if available
+    const stored = localStorage.getItem('finalizedSalariesByMonth')
+    return stored ? JSON.parse(stored) : {}
+  })
+  const [selectedFinalizedMonth, setSelectedFinalizedMonth] = useState('')
+  const [showDeleteFinalizedModal, setShowDeleteFinalizedModal] = useState(false)
+  const [monthToDelete, setMonthToDelete] = useState('')
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -262,6 +270,21 @@ export default function Reports() {
               {confirmedSalaries.length > 0 && (
                 <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">
                   {confirmedSalaries.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('finalized')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                activeTab === 'finalized'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <span>Finalized Salaries</span>
+              {Object.keys(finalizedSalaries).length > 0 && (
+                <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded-full">
+                  {Object.keys(finalizedSalaries).length}
                 </span>
               )}
             </button>
@@ -652,8 +675,45 @@ export default function Reports() {
                 <div className="flex items-center justify-center space-x-4">
                   <button
                     onClick={() => {
-                      // You can add additional logic here like saving to backend
-                      alert(`Finalizing salaries for ${confirmedSalaries.length} employees`)
+                      if (confirmedSalaries.length === 0) {
+                        alert('No salaries to finalize')
+                        return
+                      }
+                      
+                      // Get current month/year from data
+                      const currentDate = new Date()
+                      const monthKey = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })
+                      
+                      // Save to finalized salaries organized by month
+                      const updatedFinalized = {
+                        ...finalizedSalaries,
+                        [monthKey]: {
+                          month: currentDate.getMonth() + 1,
+                          year: currentDate.getFullYear(),
+                          finalized_at: new Date().toISOString(),
+                          employees: confirmedSalaries,
+                          total_salary: confirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0)
+                        }
+                      }
+                      
+                      setFinalizedSalaries(updatedFinalized)
+                      localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                      
+                      // Clear all report data after finalizing
+                      setConfirmedSalaries([])
+                      setData(null)
+                      setHourRates({})
+                      setSelectedEmployees({})
+                      setSelectedEmployee(null)
+                      
+                      // Clear processed data from localStorage
+                      localStorage.removeItem('processedReportData')
+                      localStorage.removeItem('hourRates')
+                      
+                      alert(`Successfully finalized salaries for ${confirmedSalaries.length} employees for ${monthKey}! All report data has been cleared.`)
+                      
+                      // Switch to finalized tab to show the saved data
+                      setActiveTab('finalized')
                     }}
                     className="btn-primary flex items-center space-x-2"
                   >
@@ -860,6 +920,443 @@ export default function Reports() {
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Confirm Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Finalized Salaries Tab Content */}
+      {activeTab === 'finalized' && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Finalized Salaries by Month</h3>
+            {Object.keys(finalizedSalaries).length > 0 && (
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-4 h-4 text-gray-600" />
+                  <select
+                    value={selectedFinalizedMonth || ''}
+                    onChange={(e) => setSelectedFinalizedMonth(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-sm"
+                  >
+                    <option value="">All Months</option>
+                    {Object.keys(finalizedSalaries)
+                      .sort((a, b) => {
+                        const dateA = new Date(finalizedSalaries[a].finalized_at)
+                        const dateB = new Date(finalizedSalaries[b].finalized_at)
+                        return dateB - dateA
+                      })
+                      .map((monthKey) => (
+                        <option key={monthKey} value={monthKey}>
+                          {monthKey}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                {selectedFinalizedMonth && finalizedSalaries[selectedFinalizedMonth] && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Helper function to format numbers without exponential notation
+                        const formatNumber = (num) => {
+                          if (num === 0 || !num) return '0'
+                          const str = num.toString()
+                          // Check if it's in exponential notation
+                          if (str.includes('e') || str.includes('E')) {
+                            return Number(num).toFixed(0).replace(/\.?0+$/, '')
+                          }
+                          // Convert to fixed decimal and remove trailing zeros
+                          return Number(num).toFixed(0).replace(/\.?0+$/, '')
+                        }
+                        
+                        // Dynamic import of jsPDF
+                        const jsPDF = (await import('jspdf')).default
+                        const doc = new jsPDF()
+                        
+                        const monthData = finalizedSalaries[selectedFinalizedMonth]
+                        const pageWidth = doc.internal.pageSize.getWidth()
+                        const margin = 15
+                        const tableStartX = margin
+                        const tableEndX = pageWidth - margin
+                        
+                        let yPos = margin
+                        
+                        // Header Section with colored background
+                        doc.setFillColor(14, 165, 233) // primary-600 color
+                        doc.rect(0, 0, pageWidth, 35, 'F')
+                        
+                        // Title
+                        doc.setTextColor(255, 255, 255) // White text
+                        doc.setFontSize(20)
+                        doc.setFont(undefined, 'bold')
+                        doc.text(`Salary Report - ${selectedFinalizedMonth}`, margin, yPos + 15)
+                        
+                        // Date
+                        doc.setFontSize(10)
+                        doc.setFont(undefined, 'normal')
+                        const finalizedDate = new Date(monthData.finalized_at).toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })
+                        doc.text(`Finalized on: ${finalizedDate}`, margin, yPos + 22)
+                        
+                        yPos = 45
+                        doc.setTextColor(0, 0, 0) // Black text
+                        
+                        // Summary boxes
+                        const boxWidth = 85
+                        const boxHeight = 25
+                        const boxSpacing = 10
+                        
+                        // Total Employees box
+                        doc.setFillColor(239, 246, 255) // Light blue background
+                        doc.rect(margin, yPos, boxWidth, boxHeight, 'F')
+                        doc.setFontSize(9)
+                        doc.setTextColor(100, 100, 100)
+                        doc.text('TOTAL EMPLOYEES', margin + 5, yPos + 8)
+                        doc.setFontSize(16)
+                        doc.setTextColor(14, 165, 233) // primary-600
+                        doc.setFont(undefined, 'bold')
+                        doc.text(monthData.employees.length.toString(), margin + 5, yPos + 18)
+                        
+                        // Total Salary box
+                        doc.setFillColor(236, 253, 245) // Light green background
+                        doc.rect(margin + boxWidth + boxSpacing, yPos, boxWidth, boxHeight, 'F')
+                        doc.setFontSize(9)
+                        doc.setTextColor(100, 100, 100)
+                        doc.text('TOTAL SALARY', margin + boxWidth + boxSpacing + 5, yPos + 8)
+                        doc.setFontSize(16)
+                        doc.setTextColor(16, 185, 129) // green-500
+                        doc.setFont(undefined, 'bold')
+                        doc.text(`₹${formatNumber(monthData.total_salary)}`, margin + boxWidth + boxSpacing + 5, yPos + 18)
+                        
+                        yPos += 35
+                        
+                        // Table Header with background
+                        doc.setFillColor(249, 250, 251) // gray-50
+                        doc.rect(tableStartX, yPos, tableEndX - tableStartX, 12, 'F')
+                        
+                        doc.setFontSize(10)
+                        doc.setFont(undefined, 'bold')
+                        doc.setTextColor(55, 65, 81) // gray-700
+                        doc.text('EMPLOYEE ID', tableStartX + 3, yPos + 8)
+                        doc.text('EMPLOYEE NAME', tableStartX + 25, yPos + 8)
+                        doc.text('TOTAL HOURS', tableStartX + 75, yPos + 8)
+                        doc.text('HOUR RATE', tableStartX + 105, yPos + 8)
+                        doc.text('SALARY', tableStartX + 135, yPos + 8)
+                        
+                        yPos += 15
+                        
+                        // Table rows
+                        doc.setFont(undefined, 'normal')
+                        doc.setFontSize(9)
+                        
+                        monthData.employees.forEach((emp, index) => {
+                          // Check if new page needed
+                          if (yPos > 280) {
+                            doc.addPage()
+                            yPos = margin
+                            
+                            // Re-add table header on new page
+                            doc.setFillColor(249, 250, 251)
+                            doc.rect(tableStartX, yPos, tableEndX - tableStartX, 12, 'F')
+                            doc.setFontSize(10)
+                            doc.setFont(undefined, 'bold')
+                            doc.setTextColor(55, 65, 81)
+                            doc.text('EMPLOYEE ID', tableStartX + 3, yPos + 8)
+                            doc.text('EMPLOYEE NAME', tableStartX + 25, yPos + 8)
+                            doc.text('TOTAL HOURS', tableStartX + 75, yPos + 8)
+                            doc.text('HOUR RATE', tableStartX + 105, yPos + 8)
+                            doc.text('SALARY', tableStartX + 135, yPos + 8)
+                            yPos += 15
+                          }
+                          
+                          // Alternating row background
+                          if (index % 2 === 1) {
+                            doc.setFillColor(249, 250, 251) // light gray
+                            doc.rect(tableStartX, yPos - 5, tableEndX - tableStartX, 6, 'F')
+                          }
+                          
+                          // Row data
+                          doc.setTextColor(0, 0, 0)
+                          doc.setFont(undefined, 'normal')
+                          
+                          // Employee ID (with slight background)
+                          doc.setFillColor(243, 244, 246) // gray-100
+                          doc.rect(tableStartX + 1, yPos - 4.5, 18, 5, 'F')
+                          doc.setFont(undefined, 'bold')
+                          doc.text(emp.employee_id.toString(), tableStartX + 3, yPos)
+                          
+                          // Employee Name
+                          doc.setFont(undefined, 'normal')
+                          const name = emp.employee_name.length > 18 ? emp.employee_name.substring(0, 18) + '...' : emp.employee_name
+                          doc.text(name, tableStartX + 25, yPos)
+                          
+                          // Total Hours (right aligned)
+                          doc.text(`${parseFloat(emp.total_hours || 0).toFixed(2)} hrs`, tableStartX + 75, yPos)
+                          
+                          // Hour Rate (right aligned)
+                          doc.text(`₹${formatNumber(parseFloat(emp.hour_rate || 0))}`, tableStartX + 105, yPos)
+                          
+                          // Salary (right aligned, bold, green)
+                          doc.setFont(undefined, 'bold')
+                          doc.setTextColor(16, 185, 129) // green-500
+                          doc.text(`₹${formatNumber(parseFloat(emp.salary || 0))}`, tableStartX + 135, yPos)
+                          doc.setTextColor(0, 0, 0) // Reset to black
+                          
+                          yPos += 6
+                        })
+                        
+                        // Footer with total
+                        yPos += 2
+                        doc.setFillColor(236, 253, 245) // Light green background
+                        doc.rect(tableStartX, yPos, tableEndX - tableStartX, 10, 'F')
+                        
+                        doc.setLineWidth(0.2)
+                        doc.setDrawColor(34, 197, 94) // green-500
+                        doc.line(tableStartX, yPos, tableEndX, yPos)
+                        
+                        doc.setFontSize(11)
+                        doc.setFont(undefined, 'bold')
+                        doc.setTextColor(0, 0, 0)
+                        doc.text('Grand Total Salary:', tableStartX + 100, yPos + 7)
+                        doc.setTextColor(22, 163, 74) // green-600
+                        doc.setFontSize(12)
+                        doc.text(`₹${formatNumber(monthData.total_salary)}`, tableStartX + 135, yPos + 7)
+                        
+                        // Page number
+                        const totalPages = doc.internal.pages.length - 1
+                        for (let i = 1; i <= totalPages; i++) {
+                          doc.setPage(i)
+                          doc.setFontSize(8)
+                          doc.setTextColor(150, 150, 150)
+                          doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 5, { align: 'center' })
+                        }
+                        
+                        // Save PDF
+                        doc.save(`Salary_Report_${selectedFinalizedMonth.replace(/\s+/g, '_')}.pdf`)
+                      } catch (error) {
+                        console.error('Error generating PDF:', error)
+                        alert('Error generating PDF. Please install jspdf: npm install jspdf')
+                      }
+                    }}
+                    className="btn-primary flex items-center space-x-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download PDF</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {Object.keys(finalizedSalaries).length > 0 ? (
+            <div className="space-y-6">
+              {(selectedFinalizedMonth
+                ? [[selectedFinalizedMonth, finalizedSalaries[selectedFinalizedMonth]]]
+                : Object.entries(finalizedSalaries)
+                    .sort((a, b) => {
+                      // Sort by date (newest first)
+                      const dateA = new Date(a[1].finalized_at)
+                      const dateB = new Date(b[1].finalized_at)
+                      return dateB - dateA
+                    })
+              ).map(([monthKey, monthData]) => (
+                  <div key={monthKey} className="bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
+                    {/* Header Section with Gradient */}
+                    <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="bg-white/20 p-2 rounded-lg">
+                            <FileText className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h4 className="text-2xl font-bold text-white">{monthKey}</h4>
+                            <p className="text-sm text-primary-100 flex items-center space-x-1 mt-1">
+                              <Clock className="w-3 h-3" />
+                              <span>Finalized on: {new Date(monthData.finalized_at).toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-3 text-right">
+                            <p className="text-xs text-primary-100 uppercase tracking-wide mb-1">Total Employees</p>
+                            <p className="text-2xl font-bold text-white">{monthData.employees.length}</p>
+                          </div>
+                          <div className="bg-green-500/20 backdrop-blur-sm rounded-lg px-4 py-3 text-right">
+                            <p className="text-xs text-green-100 uppercase tracking-wide mb-1">Total Salary</p>
+                            <p className="text-2xl font-bold text-white">₹{monthData.total_salary.toFixed(2)}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setMonthToDelete(monthKey)
+                              setShowDeleteFinalizedModal(true)
+                            }}
+                            className="btn-danger flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700"
+                            title="Delete this finalized salary report"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Table Section */}
+                    <div className="p-6">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead>
+                            <tr className="bg-gradient-to-r from-gray-50 to-gray-100">
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Employee ID
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Employee Name
+                              </th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Total Hours
+                              </th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Hour Rate
+                              </th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Salary
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-100">
+                            {monthData.employees.map((emp, index) => (
+                              <tr 
+                                key={emp.employee_id} 
+                                className={`hover:bg-gray-50 transition-colors duration-150 ${
+                                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                                }`}
+                              >
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-sm font-semibold text-gray-900 bg-gray-100 px-2 py-1 rounded">
+                                    {emp.employee_id}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-sm font-medium text-gray-900">{emp.employee_name}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <span className="text-sm text-gray-700 font-medium">
+                                    {parseFloat(emp.total_hours || 0).toFixed(2)} <span className="text-gray-500 text-xs">hrs</span>
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <span className="text-sm text-gray-700 font-medium">
+                                    ₹{parseFloat(emp.hour_rate || 0).toFixed(2)}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <span className="text-sm font-bold text-green-600">
+                                    ₹{parseFloat(emp.salary || 0).toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gradient-to-r from-green-50 to-green-100 border-t-2 border-green-200">
+                              <td colSpan="4" className="px-6 py-4 text-right">
+                                <span className="text-base font-bold text-gray-900">Grand Total Salary:</span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                <span className="text-xl font-bold text-green-700">
+                                  ₹{monthData.total_salary.toFixed(2)}
+                                </span>
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <CheckCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Finalized Salaries</h3>
+              <p className="text-gray-600 mb-4">
+                Finalize confirmed salaries to view them here organized by month.
+              </p>
+              <button
+                onClick={() => setActiveTab('confirmed')}
+                className="btn-secondary"
+              >
+                Go to Confirmed Salaries
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Delete Finalized Salary Confirmation Modal */}
+      {showDeleteFinalizedModal && monthToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Delete Finalized Salary</h3>
+            <div className="mb-4">
+              <p className="text-gray-700 mb-2">
+                Are you sure you want to delete the finalized salary report for <strong>{monthToDelete}</strong>?
+              </p>
+              {finalizedSalaries[monthToDelete] && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3">
+                  <p className="text-sm text-red-800">
+                    This will permanently delete:
+                  </p>
+                  <ul className="text-sm text-red-700 mt-2 ml-4 list-disc">
+                    <li>{finalizedSalaries[monthToDelete].employees.length} employee records</li>
+                    <li>Total salary: ₹{finalizedSalaries[monthToDelete].total_salary.toFixed(2)}</li>
+                  </ul>
+                </div>
+              )}
+              <p className="text-sm text-gray-600 mt-3">
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteFinalizedModal(false)
+                  setMonthToDelete('')
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  // Delete the month from finalized salaries
+                  const updatedFinalized = { ...finalizedSalaries }
+                  delete updatedFinalized[monthToDelete]
+                  setFinalizedSalaries(updatedFinalized)
+                  localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                  
+                  // Clear selected month if it was the deleted one
+                  if (selectedFinalizedMonth === monthToDelete) {
+                    setSelectedFinalizedMonth('')
+                  }
+                  
+                  setShowDeleteFinalizedModal(false)
+                  setMonthToDelete('')
+                  alert(`Successfully deleted finalized salary report for ${monthToDelete}`)
+                }}
+                className="btn-danger"
+              >
+                Delete
               </button>
             </div>
           </div>
