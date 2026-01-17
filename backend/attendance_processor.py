@@ -379,8 +379,8 @@ class AttendanceProcessor:
                 punch_info = "Admin selected date"
                 logger.info(f"Admin selected date {date_str}: Assigning 8 hours to {emp_name} (ID: {emp_id})")
             else:
-            # Apply business logic
-            worked_hours, status, punch_info = self.process_punch_logic(timestamps)
+                # Apply business logic
+                worked_hours, status, punch_info = self.process_punch_logic(timestamps)
 
             # Convert to HH:MM format
             hours_hm = self.time_to_decimal(worked_hours)
