@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X } from 'lucide-react'
+import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X, ChevronDown, ChevronUp } from 'lucide-react'
 import config from '../config'
 import {
   BarChart,
@@ -50,6 +50,11 @@ export default function Reports() {
     is_manual: true // Flag to identify manual users
   })
   const [editingManualUser, setEditingManualUser] = useState(null)
+  const [expandedBuckets, setExpandedBuckets] = useState(() => {
+    // Load from localStorage if available, or default to all expanded
+    const stored = localStorage.getItem('expandedBuckets')
+    return stored ? JSON.parse(stored) : {}
+  })
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -1262,16 +1267,44 @@ export default function Reports() {
                       const dateB = new Date(b[1].finalized_at)
                       return dateB - dateA
                     })
-              ).map(([monthKey, monthData]) => (
+              ).map(([monthKey, monthData]) => {
+                  const isExpanded = expandedBuckets[monthKey] !== false // Default to expanded
+                  
+                  const toggleBucket = () => {
+                    const newExpanded = {
+                      ...expandedBuckets,
+                      [monthKey]: !isExpanded
+                    }
+                    setExpandedBuckets(newExpanded)
+                    localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
+                  }
+                  
+                  return (
                   <div key={monthKey} className="bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
-                    {/* Header Section with Gradient */}
-                    <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-5">
+                    {/* Header Section with Gradient - Clickable to Toggle */}
+                    <div 
+                      className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-5 cursor-pointer hover:from-primary-700 hover:to-primary-800 transition-colors"
+                      onClick={toggleBucket}
+                    >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-3 flex-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleBucket()
+                            }}
+                            className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors"
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-5 h-5 text-white" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5 text-white" />
+                            )}
+                          </button>
                           <div className="bg-white/20 p-2 rounded-lg">
                             <FileText className="w-6 h-6 text-white" />
                           </div>
-                          <div>
+                          <div className="flex-1">
                             <h4 className="text-2xl font-bold text-white">{monthKey}</h4>
                             <p className="text-sm text-primary-100 flex items-center space-x-1 mt-1">
                               <Clock className="w-3 h-3" />
@@ -1284,7 +1317,7 @@ export default function Reports() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-4" onClick={(e) => e.stopPropagation()}>
                           <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-3 text-right">
                             <p className="text-xs text-primary-100 uppercase tracking-wide mb-1">Total Employees</p>
                             <p className="text-2xl font-bold text-white">{monthData.employees.length}</p>
@@ -1294,7 +1327,8 @@ export default function Reports() {
                             <p className="text-2xl font-bold text-white">₹{monthData.total_salary.toFixed(2)}</p>
                           </div>
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation()
                               setMonthToDelete(monthKey)
                               setShowDeleteFinalizedModal(true)
                             }}
@@ -1308,8 +1342,40 @@ export default function Reports() {
                       </div>
                     </div>
                     
-                    {/* Table Section */}
+                    {/* Table Section - Collapsible */}
+                    {isExpanded && (
                     <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h5 className="text-md font-semibold text-gray-700">Employee Details</h5>
+                        <button
+                          onClick={() => {
+                            // Delete permanently - different from "Move to Confirmed"
+                            if (confirm(`Are you sure you want to permanently delete the ${monthKey} finalized salary report? This action cannot be undone.`)) {
+                              const updatedFinalized = { ...finalizedSalaries }
+                              delete updatedFinalized[monthKey]
+                              setFinalizedSalaries(updatedFinalized)
+                              localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                              
+                              // Remove from expanded state
+                              const newExpanded = { ...expandedBuckets }
+                              delete newExpanded[monthKey]
+                              setExpandedBuckets(newExpanded)
+                              localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
+                              
+                              if (selectedFinalizedMonth === monthKey) {
+                                setSelectedFinalizedMonth('')
+                              }
+                              
+                              alert(`Successfully deleted ${monthKey} finalized salary report.`)
+                            }
+                          }}
+                          className="btn-danger flex items-center space-x-2 px-3 py-2 text-sm bg-red-600 hover:bg-red-700"
+                          title="Permanently delete this finalized salary report"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead>
@@ -1380,8 +1446,10 @@ export default function Reports() {
                         </table>
                       </div>
                     </div>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
             </div>
           ) : (
             <div className="text-center py-12">
