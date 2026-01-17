@@ -18,20 +18,33 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Configure CORS - Allow all origins for now (can be restricted later via environment variable)
-# This fixes CORS issues with Vercel frontend
-CORS(app, 
-     origins="*",  # Allow all origins - change to specific list in production if needed
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-     supports_credentials=False)
+# Configure CORS - Production-safe configuration
+# Allow only the Vercel frontend origin
+ALLOWED_ORIGIN = "https://biometric-blackhole.vercel.app"
 
-# Add CORS headers manually as fallback
+# Configure CORS for /api/* routes only
+CORS(app, 
+     resources={
+         r"/api/*": {
+             "origins": [ALLOWED_ORIGIN],
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+             "supports_credentials": False
+         }
+     })
+
+# Add CORS headers manually as fallback for all /api/* routes
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    # Only add CORS headers for /api/* routes
+    if request.path.startswith('/api/'):
+        origin = request.headers.get('Origin')
+        # Only allow the specific Vercel origin
+        if origin == ALLOWED_ORIGIN:
+            response.headers.add('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+            response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+            response.headers.add('Access-Control-Max-Age', '3600')
     return response
 
 # Create temp directory for file uploads
@@ -43,6 +56,19 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "message": "API is running"})
+
+
+@app.route('/api/process', methods=['OPTIONS'])
+def process_attendance_options():
+    """Handle OPTIONS preflight request for /api/process"""
+    response = jsonify({})
+    origin = request.headers.get('Origin')
+    if origin == ALLOWED_ORIGIN:
+        response.headers.add('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+        response.headers.add('Access-Control-Max-Age', '3600')
+    return response
 
 
 @app.route('/api/process', methods=['POST'])
@@ -137,6 +163,19 @@ def process_attendance():
         if 'temp_input' in locals() and os.path.exists(temp_input):
             os.remove(temp_input)
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/download', methods=['OPTIONS'])
+def download_file_options():
+    """Handle OPTIONS preflight request for /api/download"""
+    response = jsonify({})
+    origin = request.headers.get('Origin')
+    if origin == ALLOWED_ORIGIN:
+        response.headers.add('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        response.headers.add('Access-Control-Max-Age', '3600')
+    return response
 
 
 @app.route('/api/download', methods=['GET'])
