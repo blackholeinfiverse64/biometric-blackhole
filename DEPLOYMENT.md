@@ -28,7 +28,7 @@ git push -u origin main
 2. Click **"New +"** → **"Web Service"**
 3. Connect your GitHub repository
 4. Configure the service:
-   - **Name**: `attendance-api` (or your preferred name)
+   - **Name**: `biometric-blackhole` (or your preferred name)
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r backend/requirements.txt`
    - **Start Command**: `cd backend && python api.py`
@@ -45,7 +45,7 @@ In Render Dashboard → Your Service → Environment:
 Click **"Create Web Service"**. Render will:
 - Build your backend
 - Deploy it
-- Provide a URL like: `https://attendance-api.onrender.com`
+- Provide a URL like: `https://biometric-blackhole.onrender.com`
 
 **Note**: Copy this URL - you'll need it for the frontend configuration!
 
@@ -82,7 +82,9 @@ In Vercel Dashboard → Your Project → Settings → Environment Variables:
 
 Add:
 - **Key**: `VITE_API_BASE_URL`
-- **Value**: `https://your-app-name.onrender.com` (Your Render backend URL)
+- **Value**: `https://biometric-blackhole.onrender.com` (Your Render backend URL)
+  
+**IMPORTANT**: Make sure to use the correct backend URL. If your Render service is named differently, use that URL instead.
 
 **Important**: 
 - For Production, Preview, and Development environments, set the same value

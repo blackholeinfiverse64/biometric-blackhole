@@ -1,5 +1,10 @@
 // API Configuration
 // Use environment variable for API URL in production, fallback to localhost for development
+// 
+// IMPORTANT: Set VITE_API_BASE_URL in Vercel environment variables to:
+// https://biometric-blackhole.onrender.com
+// 
+// DO NOT use: https://attendance-api.onrender.com (incorrect URL)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
 
 export default {
