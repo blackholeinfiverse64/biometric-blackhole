@@ -715,9 +715,12 @@ export default function Reports() {
                         return
                       }
                       
-                      // Get current month/year from data (you can modify this to use actual processed month/year)
-                      const currentDate = new Date()
-                      const monthKey = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })
+                      // Get month/year from processed data (selected during upload)
+                      const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                                    'July', 'August', 'September', 'October', 'November', 'December']
+                      const selectedYear = data?.year || new Date().getFullYear()
+                      const selectedMonth = data?.month || (new Date().getMonth() + 1)
+                      const monthKey = `${months[selectedMonth - 1]} ${selectedYear}`
                       
                       // Check if month container already exists
                       const existingMonthData = finalizedSalaries[monthKey]
@@ -755,8 +758,8 @@ export default function Reports() {
                       const updatedFinalized = {
                         ...finalizedSalaries,
                         [monthKey]: {
-                          month: currentDate.getMonth() + 1,
-                          year: currentDate.getFullYear(),
+                          month: selectedMonth,
+                          year: selectedYear,
                           finalized_at: new Date().toISOString(), // Update to latest finalization time
                           employees: updatedEmployees,
                           total_salary: totalSalary
@@ -1296,10 +1299,10 @@ export default function Reports() {
                               setShowDeleteFinalizedModal(true)
                             }}
                             className="btn-danger flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700"
-                            title="Delete this finalized salary report"
+                            title="Move this finalized salary report back to Confirmed Salaries"
                           >
                             <Trash2 className="w-4 h-4" />
-                            <span>Delete</span>
+                            <span>Move to Confirmed</span>
                           </button>
                         </div>
                       </div>
@@ -1402,25 +1405,25 @@ export default function Reports() {
       {showDeleteFinalizedModal && monthToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Delete Finalized Salary</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Move Back to Confirmed Salaries</h3>
             <div className="mb-4">
               <p className="text-gray-700 mb-2">
-                Are you sure you want to delete the finalized salary report for <strong>{monthToDelete}</strong>?
+                Are you sure you want to move the finalized salary report for <strong>{monthToDelete}</strong> back to Confirmed Salaries?
               </p>
               {finalizedSalaries[monthToDelete] && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3">
-                  <p className="text-sm text-red-800">
-                    This will permanently delete:
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+                  <p className="text-sm text-blue-800">
+                    This will move back to Confirmed Salaries:
                   </p>
-                  <ul className="text-sm text-red-700 mt-2 ml-4 list-disc">
+                  <ul className="text-sm text-blue-700 mt-2 ml-4 list-disc">
                     <li>{finalizedSalaries[monthToDelete].employees.length} employee records</li>
                     <li>Total salary: ₹{finalizedSalaries[monthToDelete].total_salary.toFixed(2)}</li>
                   </ul>
+                  <p className="text-sm text-blue-600 mt-2 font-semibold">
+                    They will be available for editing and re-finalization.
+                  </p>
                 </div>
               )}
-              <p className="text-sm text-gray-600 mt-3">
-                This action cannot be undone.
-              </p>
             </div>
             <div className="flex items-center justify-end space-x-3">
               <button
@@ -1434,7 +1437,23 @@ export default function Reports() {
               </button>
               <button
                 onClick={() => {
-                  // Delete the month from finalized salaries
+                  // Get the employees from the month to be deleted
+                  const monthData = finalizedSalaries[monthToDelete]
+                  if (!monthData) {
+                    setShowDeleteFinalizedModal(false)
+                    setMonthToDelete('')
+                    return
+                  }
+                  
+                  // Move employees back to confirmed salaries
+                  setConfirmedSalaries(prev => {
+                    // Merge with existing confirmed salaries, avoiding duplicates
+                    const existingIds = prev.map(s => s.employee_id)
+                    const newSalaries = monthData.employees.filter(emp => !existingIds.includes(emp.employee_id))
+                    return [...prev, ...newSalaries]
+                  })
+                  
+                  // Remove the month from finalized salaries
                   const updatedFinalized = { ...finalizedSalaries }
                   delete updatedFinalized[monthToDelete]
                   setFinalizedSalaries(updatedFinalized)
@@ -1447,11 +1466,14 @@ export default function Reports() {
                   
                   setShowDeleteFinalizedModal(false)
                   setMonthToDelete('')
-                  alert(`Successfully deleted finalized salary report for ${monthToDelete}`)
+                  alert(`Successfully moved ${monthData.employees.length} employees from ${monthToDelete} back to Confirmed Salaries.`)
+                  
+                  // Switch to confirmed tab to show the moved salaries
+                  setActiveTab('confirmed')
                 }}
                 className="btn-danger"
               >
-                Delete
+                Move to Confirmed
               </button>
             </div>
           </div>

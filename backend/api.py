@@ -154,7 +154,9 @@ def process_attendance():
                 "avg_hours_per_employee": float(monthly_summary['total_hours'].mean()),
                 "avg_present_days": float(monthly_summary['present_days'].mean())
             },
-            "output_file": temp_output  # Store path for download
+            "output_file": temp_output,  # Store path for download
+            "year": year,  # Store selected year
+            "month": month  # Store selected month
         })
         
     except Exception as e:
