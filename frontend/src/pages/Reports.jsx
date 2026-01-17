@@ -715,24 +715,60 @@ export default function Reports() {
                         return
                       }
                       
-                      // Get current month/year from data
+                      // Get current month/year from data (you can modify this to use actual processed month/year)
                       const currentDate = new Date()
                       const monthKey = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })
                       
-                      // Save to finalized salaries organized by month
+                      // Check if month container already exists
+                      const existingMonthData = finalizedSalaries[monthKey]
+                      
+                      let updatedEmployees
+                      if (existingMonthData) {
+                        // Month container exists - merge new employees with existing ones
+                        // Create a map of existing employees by employee_id for quick lookup
+                        const existingEmployeesMap = new Map(
+                          existingMonthData.employees.map(emp => [emp.employee_id, emp])
+                        )
+                        
+                        // Add new employees (newer entries replace older ones for same employee_id)
+                        confirmedSalaries.forEach(newEmp => {
+                          existingEmployeesMap.set(newEmp.employee_id, {
+                            ...newEmp,
+                            finalized_at: new Date().toISOString()
+                          })
+                        })
+                        
+                        // Convert map back to array
+                        updatedEmployees = Array.from(existingEmployeesMap.values())
+                      } else {
+                        // Month container doesn't exist - create new one
+                        updatedEmployees = confirmedSalaries.map(emp => ({
+                          ...emp,
+                          finalized_at: new Date().toISOString()
+                        }))
+                      }
+                      
+                      // Calculate total salary for all employees in this month
+                      const totalSalary = updatedEmployees.reduce((sum, emp) => sum + (emp.salary || 0), 0)
+                      
+                      // Save to finalized salaries organized by month (append/merge, don't replace)
                       const updatedFinalized = {
                         ...finalizedSalaries,
                         [monthKey]: {
                           month: currentDate.getMonth() + 1,
                           year: currentDate.getFullYear(),
-                          finalized_at: new Date().toISOString(),
-                          employees: confirmedSalaries,
-                          total_salary: confirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0)
+                          finalized_at: new Date().toISOString(), // Update to latest finalization time
+                          employees: updatedEmployees,
+                          total_salary: totalSalary
                         }
                       }
                       
                       setFinalizedSalaries(updatedFinalized)
                       localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                      
+                      const actionMessage = existingMonthData 
+                        ? `Added ${confirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
+                        : `Successfully created new ${monthKey} container with ${confirmedSalaries.length} employees`
                       
                       // Clear all report data after finalizing
                       setConfirmedSalaries([])
@@ -745,7 +781,7 @@ export default function Reports() {
                       localStorage.removeItem('processedReportData')
                       localStorage.removeItem('hourRates')
                       
-                      alert(`Successfully finalized salaries for ${confirmedSalaries.length} employees for ${monthKey}! All report data has been cleared.`)
+                      alert(`${actionMessage}. All report data has been cleared.`)
                       
                       // Switch to finalized tab to show the saved data
                       setActiveTab('finalized')
