@@ -17,7 +17,28 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+
+# Configure CORS to allow requests from Vercel frontend and localhost for development
+# Get allowed origins from environment variable or use defaults
+allowed_origins = os.environ.get('ALLOWED_ORIGINS', '').split(',') if os.environ.get('ALLOWED_ORIGINS') else [
+    "https://biometric-blackhole.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173"
+]
+
+# Remove empty strings from list
+allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+
+CORS(app, resources={
+    r"/api/*": {
+        "origins": allowed_origins,
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+}, supports_credentials=True)
 
 # Create temp directory for file uploads
 UPLOAD_FOLDER = tempfile.mkdtemp()
