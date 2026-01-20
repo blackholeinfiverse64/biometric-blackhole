@@ -453,20 +453,25 @@ export default function Reports() {
                         className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                       />
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      <button
-                        onClick={() => {
-                          console.log('Opening calendar for user:', emp)
-                          console.log('Data available:', !!data)
-                          console.log('Daily report available:', !!data?.daily_report)
-                          setSelectedUserForCalendar(emp)
-                          setShowUserCalendar(true)
-                        }}
-                        className="text-primary-600 hover:text-primary-800 hover:underline cursor-pointer font-semibold"
-                        title="Click to view date-wise attendance calendar"
-                      >
-                        {emp.employee_name}
-                      </button>
+                    <td 
+                      className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 cursor-pointer hover:bg-primary-50"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        console.log('Opening calendar for user:', emp)
+                        console.log('Data available:', !!data)
+                        console.log('Daily report available:', !!data?.daily_report)
+                        setSelectedUserForCalendar(emp)
+                        setShowUserCalendar(true)
+                      }}
+                      title="Click to view date-wise attendance calendar"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="w-4 h-4 text-primary-600" />
+                        <span className="text-primary-600 hover:text-primary-800 hover:underline font-semibold">
+                          {emp.employee_name}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-1">
@@ -1713,7 +1718,15 @@ export default function Reports() {
 
       {/* User Calendar Modal */}
       {showUserCalendar && selectedUserForCalendar && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowUserCalendar(false)
+              setSelectedUserForCalendar(null)
+            }
+          }}
+        >
           <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
             <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
