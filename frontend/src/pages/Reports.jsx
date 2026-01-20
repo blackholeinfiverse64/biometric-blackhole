@@ -1877,10 +1877,11 @@ export default function Reports() {
                         let textColor = 'text-gray-400'
                         let borderColor = 'border-gray-200'
                         let statusText = 'No Data'
+                        let workedHours = 0 // Initialize workedHours outside the if block
 
                         if (hasData) {
                           const status = attendanceData.status?.toLowerCase() || ''
-                          const workedHours = parseFloat(attendanceData.worked_hours || 0)
+                          workedHours = parseFloat(attendanceData.worked_hours || 0)
 
                           if (status.includes('present') || workedHours > 0) {
                             bgColor = 'bg-green-50'
