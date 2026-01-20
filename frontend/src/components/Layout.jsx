@@ -1,8 +1,20 @@
-import { Link, useLocation } from 'react-router-dom'
-import { Calendar, Upload, Zap } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Calendar, Upload, Zap, LogOut, User } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Layout({ children }) {
   const location = useLocation()
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      navigate('/auth')
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
+  }
 
   const navItems = [
     { path: '/upload', icon: Upload, label: 'Upload' },
@@ -25,7 +37,7 @@ export default function Layout({ children }) {
               </div>
             </div>
             
-            <nav className="flex space-x-1">
+            <nav className="flex items-center space-x-1">
               {navItems.map((item) => {
                 const Icon = item.icon
                 const isActive = location.pathname === item.path
@@ -44,6 +56,23 @@ export default function Layout({ children }) {
                   </Link>
                 )
               })}
+              
+              {user && (
+                <div className="flex items-center space-x-2 ml-4 pl-4 border-l border-gray-200">
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <User className="w-4 h-4" />
+                    <span className="hidden sm:inline">{user.email}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-colors duration-200"
+                    title="Logout"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden sm:inline">Logout</span>
+                  </button>
+                </div>
+              )}
             </nav>
           </div>
         </div>
