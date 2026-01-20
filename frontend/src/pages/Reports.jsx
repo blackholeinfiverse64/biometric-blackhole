@@ -456,6 +456,9 @@ export default function Reports() {
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <button
                         onClick={() => {
+                          console.log('Opening calendar for user:', emp)
+                          console.log('Data available:', !!data)
+                          console.log('Daily report available:', !!data?.daily_report)
                           setSelectedUserForCalendar(emp)
                           setShowUserCalendar(true)
                         }}
@@ -1709,7 +1712,7 @@ export default function Reports() {
       )}
 
       {/* User Calendar Modal */}
-      {showUserCalendar && selectedUserForCalendar && data?.daily_report && (
+      {showUserCalendar && selectedUserForCalendar && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
@@ -1737,16 +1740,32 @@ export default function Reports() {
             {/* Calendar Content */}
             <div className="flex-1 overflow-y-auto p-6">
               {(() => {
-                // Filter daily report for this user
-                const userDailyData = data.daily_report.filter(
-                  record => record.employee_id === selectedUserForCalendar.employee_id
-                )
+                // Check if data and daily_report exist
+                if (!data || !data.daily_report || !Array.isArray(data.daily_report)) {
+                  return (
+                    <div className="text-center py-12">
+                      <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">No daily attendance data available. Please process a file first.</p>
+                    </div>
+                  )
+                }
+
+                // Filter daily report for this user - handle both string and number employee_id
+                const userId = selectedUserForCalendar.employee_id
+                const userDailyData = data.daily_report.filter(record => {
+                  const recordId = record.employee_id
+                  // Handle both string and number comparison
+                  return String(recordId) === String(userId) || Number(recordId) === Number(userId)
+                })
 
                 if (!userDailyData || userDailyData.length === 0) {
                   return (
                     <div className="text-center py-12">
                       <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <p className="text-gray-600">No daily attendance data available for this user.</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Employee ID: {userId} | Total Records: {data.daily_report.length}
+                      </p>
                     </div>
                   )
                 }
@@ -1764,9 +1783,33 @@ export default function Reports() {
                 // Create a map of date to attendance data
                 const dateMap = new Map()
                 userDailyData.forEach(record => {
-                  const date = new Date(record.date)
-                  const dateKey = date.toISOString().split('T')[0]
-                  dateMap.set(dateKey, record)
+                  try {
+                    // Handle different date formats
+                    let date
+                    if (record.date instanceof Date) {
+                      date = record.date
+                    } else if (typeof record.date === 'string') {
+                      // Try parsing string date
+                      date = new Date(record.date)
+                      // If invalid, try other formats
+                      if (isNaN(date.getTime())) {
+                        // Try YYYY-MM-DD format
+                        const parts = record.date.split(/[-/]/)
+                        if (parts.length === 3) {
+                          date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]))
+                        }
+                      }
+                    } else {
+                      date = new Date(record.date)
+                    }
+                    
+                    if (!isNaN(date.getTime())) {
+                      const dateKey = date.toISOString().split('T')[0]
+                      dateMap.set(dateKey, record)
+                    }
+                  } catch (e) {
+                    console.warn('Error parsing date:', record.date, e)
+                  }
                 })
 
                 // Get first and last day of month
