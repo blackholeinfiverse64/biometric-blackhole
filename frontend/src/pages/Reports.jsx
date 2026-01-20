@@ -2230,54 +2230,86 @@ export default function Reports() {
                         updatedDailyReport.push(newRecord)
                       }
 
-                      // Recalculate monthly summary based on updated daily report
+                      // Recalculate monthly summary for ALL employees based on updated daily report
                       const employeeId = selectedUserForCalendar.employee_id
-                      const userRecords = updatedDailyReport.filter(r => 
-                        String(r.employee_id) === String(employeeId)
-                      )
                       
-                      let totalHours = 0
-                      let presentDays = 0
-                      let absentDays = 0
-                      let autoAssignedDays = 0
-                      
-                      userRecords.forEach(record => {
-                        const hours = parseFloat(record.worked_hours || 0)
-                        totalHours += hours
-                        const status = (record.status || '').toLowerCase()
-                        
-                        if (status.includes('absent') || hours === 0) {
-                          absentDays++
-                        } else if (status.includes('present') || hours > 0) {
-                          presentDays++
-                        } else if (status.includes('auto') || status.includes('assigned')) {
-                          autoAssignedDays++
+                      // Group records by employee
+                      const employeeRecordsMap = new Map()
+                      updatedDailyReport.forEach(record => {
+                        const empId = String(record.employee_id)
+                        if (!employeeRecordsMap.has(empId)) {
+                          employeeRecordsMap.set(empId, [])
                         }
+                        employeeRecordsMap.get(empId).push(record)
                       })
-
-                      // Update monthly summary for this employee
+                      
+                      // Recalculate summary for all employees
                       const updatedMonthlySummary = data.monthly_summary.map(emp => {
-                        if (String(emp.employee_id) === String(employeeId)) {
+                        const empId = String(emp.employee_id)
+                        const userRecords = employeeRecordsMap.get(empId) || []
+                        
+                        if (userRecords.length > 0) {
+                          let totalHours = 0
+                          let presentDays = 0
+                          let absentDays = 0
+                          let autoAssignedDays = 0
+                          
+                          userRecords.forEach(record => {
+                            const hours = parseFloat(record.worked_hours || 0)
+                            totalHours += hours
+                            const status = (record.status || '').toLowerCase()
+                            
+                            if (status.includes('absent') || (hours === 0 && !status.includes('admin'))) {
+                              absentDays++
+                            } else if (status.includes('present') || (hours > 0 && !status.includes('wfh') && !status.includes('admin'))) {
+                              presentDays++
+                            } else if (status.includes('auto') || status.includes('assigned') || status.includes('admin') || status.includes('wfh')) {
+                              autoAssignedDays++
+                            }
+                          })
+                          
+                          // Convert total hours to HH:MM format
+                          const totalMinutes = Math.round(totalHours * 60)
+                          const h = Math.floor(totalMinutes / 60)
+                          const m = totalMinutes % 60
+                          const totalHoursHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+                          
                           return {
                             ...emp,
                             total_hours: totalHours,
                             present_days: presentDays,
                             absent_days: absentDays,
                             auto_assigned_days: autoAssignedDays,
-                            total_hours_hm: `${Math.floor(totalHours)}:${String(Math.round((totalHours % 1) * 60)).padStart(2, '0')}`
+                            total_hours_hm: totalHoursHm
                           }
                         }
                         return emp
                       })
+                      
+                      // Recalculate overall statistics
+                      const totalEmployees = updatedMonthlySummary.length
+                      const totalHoursAll = updatedMonthlySummary.reduce((sum, emp) => sum + parseFloat(emp.total_hours || 0), 0)
+                      const totalPresentDays = updatedMonthlySummary.reduce((sum, emp) => sum + (emp.present_days || 0), 0)
+                      const totalAbsentDays = updatedMonthlySummary.reduce((sum, emp) => sum + (emp.absent_days || 0), 0)
+                      const totalAutoAssignedDays = updatedMonthlySummary.reduce((sum, emp) => sum + (emp.auto_assigned_days || 0), 0)
+                      const totalRecords = updatedDailyReport.length
+                      const avgHoursPerEmployee = totalEmployees > 0 ? totalHoursAll / totalEmployees : 0
+                      const avgPresentDays = totalEmployees > 0 ? totalPresentDays / totalEmployees : 0
 
-                      // Update data state
+                      // Update data state with recalculated values
                       const updatedData = {
                         ...data,
                         daily_report: updatedDailyReport,
                         monthly_summary: updatedMonthlySummary,
                         statistics: {
-                          ...data.statistics,
-                          total_hours: updatedMonthlySummary.reduce((sum, emp) => sum + parseFloat(emp.total_hours || 0), 0)
+                          total_hours: totalHoursAll,
+                          total_employees: totalEmployees,
+                          total_records: totalRecords,
+                          present_days: totalPresentDays,
+                          absent_days: totalAbsentDays,
+                          auto_assigned_days: totalAutoAssignedDays,
+                          avg_hours_per_employee: avgHoursPerEmployee,
+                          avg_present_days: avgPresentDays
                         }
                       }
                       setData(updatedData)
@@ -2285,7 +2317,15 @@ export default function Reports() {
                       // Save to localStorage
                       localStorage.setItem('lastProcessResult', JSON.stringify(updatedData))
 
-                      alert(`Successfully updated attendance for Day ${selectedDayForEdit.day}`)
+                      // Update selectedUserForCalendar to reflect new totals
+                      const updatedUser = updatedMonthlySummary.find(emp => 
+                        String(emp.employee_id) === String(employeeId)
+                      )
+                      if (updatedUser) {
+                        setSelectedUserForCalendar(updatedUser)
+                      }
+
+                      alert(`Successfully updated attendance for Day ${selectedDayForEdit.day}. Monthly summary has been recalculated.`)
                       setShowEditDayModal(false)
                       setSelectedDayForEdit(null)
                       setEditDayForm({ status: '', hours: '', date: '' })
