@@ -5,8 +5,10 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 // Debug: Log environment variables (remove in production)
 if (import.meta.env.DEV) {
-  console.log('Supabase URL:', supabaseUrl ? '✅ Set' : '❌ Missing')
-  console.log('Supabase Key:', supabaseAnonKey ? '✅ Set' : '❌ Missing')
+  console.log('🔍 Environment Check:')
+  console.log('  Supabase URL:', supabaseUrl ? '✅ Set' : '❌ Missing')
+  console.log('  Supabase Key:', supabaseAnonKey ? '✅ Set' : '❌ Missing')
+  console.log('  All env vars:', Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')))
 }
 
 if (!supabaseUrl || !supabaseAnonKey) {
