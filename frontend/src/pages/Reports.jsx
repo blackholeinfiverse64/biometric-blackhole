@@ -57,6 +57,9 @@ export default function Reports() {
   })
   const [showUserCalendar, setShowUserCalendar] = useState(false)
   const [selectedUserForCalendar, setSelectedUserForCalendar] = useState(null)
+  const [showEditDayModal, setShowEditDayModal] = useState(false)
+  const [selectedDayForEdit, setSelectedDayForEdit] = useState(null)
+  const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', date: '' })
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -505,38 +508,80 @@ export default function Reports() {
                       {hasSalary ? `₹${salary.toFixed(2)}` : '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      {hasRate && hasSalary ? (
-                        <button
-                          onClick={() => {
-                            const confirmedSalary = {
-                              employee_id: emp.employee_id,
-                              employee_name: emp.employee_name,
-                              total_hours: parseFloat(emp.total_hours),
-                              hour_rate: rate,
-                              salary: salary,
-                              confirmed_at: new Date().toISOString()
-                            }
-                            // Add to confirmed salaries if not already there
-                            setConfirmedSalaries(prev => {
-                              const exists = prev.find(s => s.employee_id === emp.employee_id)
-                              if (exists) {
-                                return prev.map(s => 
-                                  s.employee_id === emp.employee_id ? confirmedSalary : s
-                                )
+                      <div className="flex items-center space-x-2">
+                        {hasRate && hasSalary ? (
+                          <button
+                            onClick={() => {
+                              const confirmedSalary = {
+                                employee_id: emp.employee_id,
+                                employee_name: emp.employee_name,
+                                total_hours: parseFloat(emp.total_hours),
+                                hour_rate: rate,
+                                salary: salary,
+                                confirmed_at: new Date().toISOString()
                               }
-                              return [...prev, confirmedSalary]
-                            })
-                            // Switch to confirmed tab
-                            setActiveTab('confirmed')
-                          }}
-                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          <span>Confirm</span>
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 text-xs">-</span>
-                      )}
+                              // Add to confirmed salaries if not already there
+                              setConfirmedSalaries(prev => {
+                                const exists = prev.find(s => s.employee_id === emp.employee_id)
+                                if (exists) {
+                                  return prev.map(s => 
+                                    s.employee_id === emp.employee_id ? confirmedSalary : s
+                                  )
+                                }
+                                return [...prev, confirmedSalary]
+                              })
+                              // Switch to confirmed tab
+                              setActiveTab('confirmed')
+                            }}
+                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            <span>Confirm</span>
+                          </button>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                        {emp.is_manual && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete ${emp.employee_name} (ID: ${emp.employee_id})?`)) {
+                                // Remove from manual users
+                                const updatedManualUsers = manualUsers.filter(
+                                  u => u.employee_id !== emp.employee_id
+                                )
+                                setManualUsers(updatedManualUsers)
+                                localStorage.setItem('manualUsers', JSON.stringify(updatedManualUsers))
+                                
+                                // Remove from confirmed salaries if exists
+                                setConfirmedSalaries(prev => 
+                                  prev.filter(s => s.employee_id !== emp.employee_id)
+                                )
+                                
+                                // Remove hour rate if exists
+                                setHourRates(prev => {
+                                  const updated = { ...prev }
+                                  delete updated[emp.employee_id]
+                                  return updated
+                                })
+                                
+                                // Remove from selected employees if exists
+                                setSelectedEmployees(prev => {
+                                  const updated = { ...prev }
+                                  delete updated[emp.employee_id]
+                                  return updated
+                                })
+                                
+                                alert(`Successfully deleted ${emp.employee_name}`)
+                              }
+                            }}
+                            className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
+                            title="Delete manual user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Delete</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -1897,25 +1942,31 @@ export default function Reports() {
                           const status = attendanceData.status?.toLowerCase() || ''
                           workedHours = parseFloat(attendanceData.worked_hours || 0)
 
-                          if (status.includes('present') || workedHours > 0) {
-                            bgColor = 'bg-green-50'
-                            textColor = 'text-green-900'
-                            borderColor = 'border-green-300'
-                            statusText = 'Present'
-                          } else if (status.includes('absent')) {
+                          // Color coding: Present - green, Absent - red, Admin selected - blue, WFH - Yellow
+                          if (status.includes('wfh') || status.includes('work from home')) {
+                            bgColor = 'bg-yellow-50'
+                            textColor = 'text-yellow-900'
+                            borderColor = 'border-yellow-300'
+                            statusText = 'WFH'
+                          } else if (status.includes('admin') || status.includes('assigned') || status.includes('selected')) {
+                            bgColor = 'bg-blue-50'
+                            textColor = 'text-blue-900'
+                            borderColor = 'border-blue-300'
+                            statusText = 'Admin Selected'
+                          } else if (status.includes('absent') || workedHours === 0) {
                             bgColor = 'bg-red-50'
                             textColor = 'text-red-900'
                             borderColor = 'border-red-300'
                             statusText = 'Absent'
-                          } else if (status.includes('auto') || status.includes('assigned')) {
-                            bgColor = 'bg-yellow-50'
-                            textColor = 'text-yellow-900'
-                            borderColor = 'border-yellow-300'
-                            statusText = 'Auto Assigned'
+                          } else if (status.includes('present') || workedHours > 0) {
+                            bgColor = 'bg-green-50'
+                            textColor = 'text-green-900'
+                            borderColor = 'border-green-300'
+                            statusText = 'Present'
                           } else {
-                            bgColor = 'bg-blue-50'
-                            textColor = 'text-blue-900'
-                            borderColor = 'border-blue-300'
+                            bgColor = 'bg-gray-50'
+                            textColor = 'text-gray-900'
+                            borderColor = 'border-gray-300'
                             statusText = status || 'Recorded'
                           }
                         }
@@ -1923,11 +1974,24 @@ export default function Reports() {
                         return (
                           <div
                             key={day}
-                            className={`aspect-square border-2 ${borderColor} ${bgColor} rounded-lg p-2 cursor-pointer hover:shadow-md transition-all ${
+                            onClick={() => {
+                              setSelectedDayForEdit({ day, date, attendanceData, dateKey: getDateKey(date) })
+                              setEditDayForm({
+                                status: attendanceData?.status || '',
+                                hours: attendanceData?.worked_hours || 0,
+                                date: getDateKey(date)
+                              })
+                              setShowEditDayModal(true)
+                            }}
+                            className={`aspect-square border-2 ${borderColor} ${bgColor} rounded-lg p-2 cursor-pointer hover:shadow-md transition-all relative group ${
                               isToday ? 'ring-2 ring-primary-500 ring-offset-2' : ''
                             }`}
-                            title={hasData ? `${attendanceData.date || date.toLocaleDateString()}: ${attendanceData.status || 'N/A'}` : 'No data'}
+                            title={hasData ? `${attendanceData.date || date.toLocaleDateString()}: ${attendanceData.status || 'N/A'} - Click to edit` : 'No data - Click to add'}
                           >
+                            {/* Edit icon on hover */}
+                            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Edit2 className="w-3 h-3 text-gray-600" />
+                            </div>
                             <div className="text-xs font-semibold text-gray-700 mb-1">{day}</div>
                             {hasData && (
                               <div className="text-xs space-y-0.5">
@@ -2011,6 +2075,227 @@ export default function Reports() {
                   </div>
                 )
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Day Modal */}
+      {showEditDayModal && selectedDayForEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">
+                Edit Attendance - Day {selectedDayForEdit.day}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowEditDayModal(false)
+                  setSelectedDayForEdit(null)
+                  setEditDayForm({ status: '', hours: '', date: '' })
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date
+                </label>
+                <input
+                  type="text"
+                  value={new Date(selectedDayForEdit.date).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                  disabled
+                  className="input-field bg-gray-100 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={editDayForm.status}
+                  onChange={(e) => setEditDayForm({ ...editDayForm, status: e.target.value })}
+                  className="input-field"
+                >
+                  <option value="">Select Status</option>
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="WFH">WFH (Work From Home)</option>
+                  <option value="Admin Selected">Admin Selected</option>
+                  <option value="System Assigned – Missing Punch-Out">System Assigned – Missing Punch-Out</option>
+                  <option value="Punch Error – Auto Assigned">Punch Error – Auto Assigned</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Hours Worked <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={editDayForm.hours}
+                  onChange={(e) => setEditDayForm({ ...editDayForm, hours: e.target.value })}
+                  min="0"
+                  max="24"
+                  step="0.01"
+                  className="input-field"
+                  placeholder="Enter hours (e.g., 8.5)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter hours in decimal format (e.g., 8.5 for 8 hours 30 minutes)
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowEditDayModal(false)
+                    setSelectedDayForEdit(null)
+                    setEditDayForm({ status: '', hours: '', date: '' })
+                  }}
+                  className="flex-1 btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!editDayForm.status || editDayForm.hours === '') {
+                      alert('Please fill in both Status and Hours')
+                      return
+                    }
+
+                    const hours = parseFloat(editDayForm.hours) || 0
+                    const dateKey = selectedDayForEdit.dateKey
+
+                    // Helper function to create date key
+                    const getDateKeyLocal = (date) => {
+                      const d = date instanceof Date ? date : new Date(date)
+                      const y = d.getFullYear()
+                      const m = String(d.getMonth() + 1).padStart(2, '0')
+                      const day = String(d.getDate()).padStart(2, '0')
+                      return `${y}-${m}-${day}`
+                    }
+
+                    // Update the daily_report data
+                    if (data && data.daily_report) {
+                      const updatedDailyReport = data.daily_report.map(record => {
+                        const recordDateKey = getDateKeyLocal(new Date(record.date))
+                        if (recordDateKey === dateKey && 
+                            String(record.employee_id) === String(selectedUserForCalendar.employee_id)) {
+                          // Convert hours to HH:MM format
+                          const totalMinutes = Math.round(hours * 60)
+                          const h = Math.floor(totalMinutes / 60)
+                          const m = totalMinutes % 60
+                          const hoursHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+
+                          return {
+                            ...record,
+                            status: editDayForm.status,
+                            worked_hours: hours,
+                            hours_hm: hoursHm
+                          }
+                        }
+                        return record
+                      })
+
+                      // Check if record exists, if not create new one
+                      const existingRecord = updatedDailyReport.find(record => {
+                        const recordDateKey = getDateKeyLocal(new Date(record.date))
+                        return recordDateKey === dateKey && 
+                               String(record.employee_id) === String(selectedUserForCalendar.employee_id)
+                      })
+
+                      if (!existingRecord) {
+                        // Create new record
+                        const newRecord = {
+                          employee_id: selectedUserForCalendar.employee_id,
+                          employee_name: selectedUserForCalendar.employee_name,
+                          date: selectedDayForEdit.date,
+                          status: editDayForm.status,
+                          worked_hours: hours,
+                          hours_hm: `${String(Math.floor(hours)).padStart(2, '0')}:${String(Math.round((hours % 1) * 60)).padStart(2, '0')}`,
+                          punches: '',
+                          punch_info: 'Admin Edited'
+                        }
+                        updatedDailyReport.push(newRecord)
+                      }
+
+                      // Recalculate monthly summary based on updated daily report
+                      const employeeId = selectedUserForCalendar.employee_id
+                      const userRecords = updatedDailyReport.filter(r => 
+                        String(r.employee_id) === String(employeeId)
+                      )
+                      
+                      let totalHours = 0
+                      let presentDays = 0
+                      let absentDays = 0
+                      let autoAssignedDays = 0
+                      
+                      userRecords.forEach(record => {
+                        const hours = parseFloat(record.worked_hours || 0)
+                        totalHours += hours
+                        const status = (record.status || '').toLowerCase()
+                        
+                        if (status.includes('absent') || hours === 0) {
+                          absentDays++
+                        } else if (status.includes('present') || hours > 0) {
+                          presentDays++
+                        } else if (status.includes('auto') || status.includes('assigned')) {
+                          autoAssignedDays++
+                        }
+                      })
+
+                      // Update monthly summary for this employee
+                      const updatedMonthlySummary = data.monthly_summary.map(emp => {
+                        if (String(emp.employee_id) === String(employeeId)) {
+                          return {
+                            ...emp,
+                            total_hours: totalHours,
+                            present_days: presentDays,
+                            absent_days: absentDays,
+                            auto_assigned_days: autoAssignedDays,
+                            total_hours_hm: `${Math.floor(totalHours)}:${String(Math.round((totalHours % 1) * 60)).padStart(2, '0')}`
+                          }
+                        }
+                        return emp
+                      })
+
+                      // Update data state
+                      const updatedData = {
+                        ...data,
+                        daily_report: updatedDailyReport,
+                        monthly_summary: updatedMonthlySummary,
+                        statistics: {
+                          ...data.statistics,
+                          total_hours: updatedMonthlySummary.reduce((sum, emp) => sum + parseFloat(emp.total_hours || 0), 0)
+                        }
+                      }
+                      setData(updatedData)
+                      
+                      // Save to localStorage
+                      localStorage.setItem('lastProcessResult', JSON.stringify(updatedData))
+
+                      alert(`Successfully updated attendance for Day ${selectedDayForEdit.day}`)
+                      setShowEditDayModal(false)
+                      setSelectedDayForEdit(null)
+                      setEditDayForm({ status: '', hours: '', date: '' })
+                    }
+                  }}
+                  className="flex-1 btn-primary"
+                >
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
         </div>
