@@ -1793,31 +1793,45 @@ export default function Reports() {
                 const month = data.month || new Date().getMonth() + 1
                 const monthName = months[month - 1]
 
+                // Helper function to create date key in YYYY-MM-DD format (local timezone)
+                const getDateKey = (date) => {
+                  const y = date.getFullYear()
+                  const m = String(date.getMonth() + 1).padStart(2, '0')
+                  const d = String(date.getDate()).padStart(2, '0')
+                  return `${y}-${m}-${d}`
+                }
+
                 // Create a map of date to attendance data
                 const dateMap = new Map()
+                
                 userDailyData.forEach(record => {
                   try {
                     // Handle different date formats
                     let date
                     if (record.date instanceof Date) {
-                      date = record.date
+                      date = new Date(record.date.getFullYear(), record.date.getMonth(), record.date.getDate())
                     } else if (typeof record.date === 'string') {
                       // Try parsing string date
+                      // First try ISO format or standard date string
                       date = new Date(record.date)
-                      // If invalid, try other formats
+                      // If invalid, try YYYY-MM-DD format
                       if (isNaN(date.getTime())) {
-                        // Try YYYY-MM-DD format
                         const parts = record.date.split(/[-/]/)
                         if (parts.length === 3) {
                           date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]))
                         }
+                      } else {
+                        // Create date in local timezone to avoid UTC conversion issues
+                        date = new Date(date.getFullYear(), date.getMonth(), date.getDate())
                       }
                     } else {
                       date = new Date(record.date)
+                      // Normalize to local date
+                      date = new Date(date.getFullYear(), date.getMonth(), date.getDate())
                     }
                     
                     if (!isNaN(date.getTime())) {
-                      const dateKey = date.toISOString().split('T')[0]
+                      const dateKey = getDateKey(date)
                       dateMap.set(dateKey, record)
                     }
                   } catch (e) {
@@ -1842,7 +1856,7 @@ export default function Reports() {
                 // Days of the month
                 for (let day = 1; day <= daysInMonth; day++) {
                   const date = new Date(year, month - 1, day)
-                  const dateKey = date.toISOString().split('T')[0]
+                  const dateKey = getDateKey(date)
                   const attendanceData = dateMap.get(dateKey)
                   calendarDays.push({ day, date, attendanceData })
                 }
