@@ -55,6 +55,8 @@ export default function Reports() {
     const stored = localStorage.getItem('expandedBuckets')
     return stored ? JSON.parse(stored) : {}
   })
+  const [showUserCalendar, setShowUserCalendar] = useState(false)
+  const [selectedUserForCalendar, setSelectedUserForCalendar] = useState(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -452,7 +454,16 @@ export default function Reports() {
                       />
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {emp.employee_name}
+                      <button
+                        onClick={() => {
+                          setSelectedUserForCalendar(emp)
+                          setShowUserCalendar(true)
+                        }}
+                        className="text-primary-600 hover:text-primary-800 hover:underline cursor-pointer font-semibold"
+                        title="Click to view date-wise attendance calendar"
+                      >
+                        {emp.employee_name}
+                      </button>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-1">
@@ -1692,6 +1703,243 @@ export default function Reports() {
               >
                 {editingManualUser ? 'Update' : 'Add'} User
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Calendar Modal */}
+      {showUserCalendar && selectedUserForCalendar && data?.daily_report && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold text-white">
+                  {selectedUserForCalendar.employee_name}
+                </h3>
+                <p className="text-sm text-primary-100 mt-1">
+                  Employee ID: {selectedUserForCalendar.employee_id} | 
+                  Total Hours: {parseFloat(selectedUserForCalendar.total_hours || 0).toFixed(2)} hrs
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowUserCalendar(false)
+                  setSelectedUserForCalendar(null)
+                }}
+                className="text-white hover:text-gray-200 p-2"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Calendar Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {(() => {
+                // Filter daily report for this user
+                const userDailyData = data.daily_report.filter(
+                  record => record.employee_id === selectedUserForCalendar.employee_id
+                )
+
+                if (!userDailyData || userDailyData.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">No daily attendance data available for this user.</p>
+                    </div>
+                  )
+                }
+
+                // Group by date and create calendar view
+                const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                              'July', 'August', 'September', 'October', 'November', 'December']
+                const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+                // Get year and month from data
+                const year = data.year || new Date().getFullYear()
+                const month = data.month || new Date().getMonth() + 1
+                const monthName = months[month - 1]
+
+                // Create a map of date to attendance data
+                const dateMap = new Map()
+                userDailyData.forEach(record => {
+                  const date = new Date(record.date)
+                  const dateKey = date.toISOString().split('T')[0]
+                  dateMap.set(dateKey, record)
+                })
+
+                // Get first and last day of month
+                const firstDay = new Date(year, month - 1, 1)
+                const lastDay = new Date(year, month, 0)
+                const daysInMonth = lastDay.getDate()
+                const firstDayOfWeek = firstDay.getDay()
+
+                // Generate calendar grid
+                const calendarDays = []
+                
+                // Empty cells for days before month starts
+                for (let i = 0; i < firstDayOfWeek; i++) {
+                  calendarDays.push(null)
+                }
+
+                // Days of the month
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const date = new Date(year, month - 1, day)
+                  const dateKey = date.toISOString().split('T')[0]
+                  const attendanceData = dateMap.get(dateKey)
+                  calendarDays.push({ day, date, attendanceData })
+                }
+
+                return (
+                  <div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-4">
+                      {monthName} {year} - Daily Attendance Calendar
+                    </h4>
+                    
+                    {/* Calendar Grid */}
+                    <div className="grid grid-cols-7 gap-2 mb-6">
+                      {/* Week day headers */}
+                      {weekDays.map(day => (
+                        <div key={day} className="text-center text-xs font-semibold text-gray-700 py-2 bg-gray-100 rounded">
+                          {day}
+                        </div>
+                      ))}
+
+                      {/* Calendar days */}
+                      {calendarDays.map((item, index) => {
+                        if (!item) {
+                          return <div key={`empty-${index}`} className="aspect-square" />
+                        }
+
+                        const { day, date, attendanceData } = item
+                        const isToday = new Date().toDateString() === date.toDateString()
+                        const hasData = !!attendanceData
+
+                        // Determine status color
+                        let bgColor = 'bg-gray-50'
+                        let textColor = 'text-gray-400'
+                        let borderColor = 'border-gray-200'
+                        let statusText = 'No Data'
+
+                        if (hasData) {
+                          const status = attendanceData.status?.toLowerCase() || ''
+                          const workedHours = parseFloat(attendanceData.worked_hours || 0)
+
+                          if (status.includes('present') || workedHours > 0) {
+                            bgColor = 'bg-green-50'
+                            textColor = 'text-green-900'
+                            borderColor = 'border-green-300'
+                            statusText = 'Present'
+                          } else if (status.includes('absent')) {
+                            bgColor = 'bg-red-50'
+                            textColor = 'text-red-900'
+                            borderColor = 'border-red-300'
+                            statusText = 'Absent'
+                          } else if (status.includes('auto') || status.includes('assigned')) {
+                            bgColor = 'bg-yellow-50'
+                            textColor = 'text-yellow-900'
+                            borderColor = 'border-yellow-300'
+                            statusText = 'Auto Assigned'
+                          } else {
+                            bgColor = 'bg-blue-50'
+                            textColor = 'text-blue-900'
+                            borderColor = 'border-blue-300'
+                            statusText = status || 'Recorded'
+                          }
+                        }
+
+                        return (
+                          <div
+                            key={day}
+                            className={`aspect-square border-2 ${borderColor} ${bgColor} rounded-lg p-2 cursor-pointer hover:shadow-md transition-all ${
+                              isToday ? 'ring-2 ring-primary-500 ring-offset-2' : ''
+                            }`}
+                            title={hasData ? `${attendanceData.date || date.toLocaleDateString()}: ${attendanceData.status || 'N/A'}` : 'No data'}
+                          >
+                            <div className="text-xs font-semibold text-gray-700 mb-1">{day}</div>
+                            {hasData && (
+                              <div className="text-xs space-y-0.5">
+                                <div className={`font-bold ${textColor}`}>
+                                  {workedHours.toFixed(2)}h
+                                </div>
+                                {attendanceData.hours_hm && (
+                                  <div className="text-xs text-gray-600">
+                                    {attendanceData.hours_hm}
+                                  </div>
+                                )}
+                                {attendanceData.punches && (
+                                  <div className="text-xs text-gray-500 truncate" title={attendanceData.punches}>
+                                    {attendanceData.punches.length > 10 
+                                      ? attendanceData.punches.substring(0, 10) + '...' 
+                                      : attendanceData.punches}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {!hasData && (
+                              <div className="text-xs text-gray-400">-</div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Detailed List */}
+                    <div className="mt-6">
+                      <h5 className="text-lg font-semibold text-gray-900 mb-4">Detailed Attendance Records</h5>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Punches</th>
+                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hours</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {userDailyData
+                              .sort((a, b) => new Date(a.date) - new Date(b.date))
+                              .map((record, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                    {new Date(record.date).toLocaleDateString('en-US', {
+                                      weekday: 'short',
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric'
+                                    })}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                                    {record.punches || record.punch_info || '-'}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
+                                    {parseFloat(record.worked_hours || 0).toFixed(2)} hrs
+                                    {record.hours_hm && (
+                                      <span className="text-gray-500 ml-2">({record.hours_hm})</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                      record.status?.toLowerCase().includes('present') || parseFloat(record.worked_hours || 0) > 0
+                                        ? 'bg-green-100 text-green-800'
+                                        : record.status?.toLowerCase().includes('absent')
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {record.status || 'N/A'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
