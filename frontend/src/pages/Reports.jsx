@@ -41,6 +41,11 @@ export default function Reports() {
     const stored = localStorage.getItem('manualUsers')
     return stored ? JSON.parse(stored) : []
   })
+  const [manualUserDailyRecords, setManualUserDailyRecords] = useState(() => {
+    // Load daily records for manual users from localStorage
+    const stored = localStorage.getItem('manualUserDailyRecords')
+    return stored ? JSON.parse(stored) : {} // Object with employee_id as key, array of daily records as value
+  })
   const [showAddManualUserModal, setShowAddManualUserModal] = useState(false)
   const [manualUserForm, setManualUserForm] = useState({
     employee_id: '',
@@ -1798,8 +1803,11 @@ export default function Reports() {
             {/* Calendar Content */}
             <div className="flex-1 overflow-y-auto p-6">
               {(() => {
-                // Check if data and daily_report exist
-                if (!data || !data.daily_report || !Array.isArray(data.daily_report)) {
+                // Check if this is a manual user - they don't need daily_report from data
+                const isManualUser = selectedUserForCalendar.is_manual === true
+                
+                // For regular users, check if data and daily_report exist
+                if (!isManualUser && (!data || !data.daily_report || !Array.isArray(data.daily_report))) {
                   return (
                     <div className="text-center py-12">
                       <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1810,13 +1818,23 @@ export default function Reports() {
 
                 // Filter daily report for this user - handle both string and number employee_id
                 const userId = selectedUserForCalendar.employee_id
-                const userDailyData = data.daily_report.filter(record => {
-                  const recordId = record.employee_id
-                  // Handle both string and number comparison
-                  return String(recordId) === String(userId) || Number(recordId) === Number(userId)
-                })
+                const isManualUser = selectedUserForCalendar.is_manual === true
+                
+                // For manual users, use their stored daily records
+                let userDailyData
+                if (isManualUser) {
+                  userDailyData = manualUserDailyRecords[userId] || []
+                } else {
+                  // For regular users, use daily_report from data
+                  userDailyData = data.daily_report.filter(record => {
+                    const recordId = record.employee_id
+                    // Handle both string and number comparison
+                    return String(recordId) === String(userId) || Number(recordId) === Number(userId)
+                  })
+                }
 
-                if (!userDailyData || userDailyData.length === 0) {
+                // For manual users, allow empty data - they can add records via calendar
+                if (!isManualUser && (!userDailyData || userDailyData.length === 0)) {
                   return (
                     <div className="text-center py-12">
                       <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1833,9 +1851,10 @@ export default function Reports() {
                               'July', 'August', 'September', 'October', 'November', 'December']
                 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-                // Get year and month from data
-                const year = data.year || new Date().getFullYear()
-                const month = data.month || new Date().getMonth() + 1
+                // Get year and month from data or current date
+                // For manual users, use current month/year if data doesn't have it
+                const year = data?.year || new Date().getFullYear()
+                const month = data?.month || new Date().getMonth() + 1
                 const monthName = months[month - 1]
 
                 // Helper function to create date key in YYYY-MM-DD format (local timezone)
@@ -2023,54 +2042,61 @@ export default function Reports() {
                     {/* Detailed List */}
                     <div className="mt-6">
                       <h5 className="text-lg font-semibold text-gray-900 mb-4">Detailed Attendance Records</h5>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Punches</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hours</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {userDailyData
-                              .sort((a, b) => new Date(a.date) - new Date(b.date))
-                              .map((record, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50">
-                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                    {new Date(record.date).toLocaleDateString('en-US', {
-                                      weekday: 'short',
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric'
-                                    })}
-                                  </td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                                    {record.punches || record.punch_info || '-'}
-                                  </td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
-                                    {parseFloat(record.worked_hours || 0).toFixed(2)} hrs
-                                    {record.hours_hm && (
-                                      <span className="text-gray-500 ml-2">({record.hours_hm})</span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 whitespace-nowrap text-sm">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                      record.status?.toLowerCase().includes('present') || parseFloat(record.worked_hours || 0) > 0
-                                        ? 'bg-green-100 text-green-800'
-                                        : record.status?.toLowerCase().includes('absent')
-                                        ? 'bg-red-100 text-red-800'
-                                        : 'bg-yellow-100 text-yellow-800'
-                                    }`}>
-                                      {record.status || 'N/A'}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      {userDailyData.length === 0 ? (
+                        <div className="text-center py-8 bg-gray-50 rounded-lg">
+                          <p className="text-gray-600 mb-2">No attendance records yet</p>
+                          <p className="text-sm text-gray-500">Click on any day in the calendar above to add attendance records</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Punches</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hours</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {userDailyData
+                                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                                .map((record, idx) => (
+                                  <tr key={idx} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                      {new Date(record.date).toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })}
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                                      {record.punches || record.punch_info || '-'}
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
+                                      {parseFloat(record.worked_hours || 0).toFixed(2)} hrs
+                                      {record.hours_hm && (
+                                        <span className="text-gray-500 ml-2">({record.hours_hm})</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                        record.status?.toLowerCase().includes('present') || parseFloat(record.worked_hours || 0) > 0
+                                          ? 'bg-green-100 text-green-800'
+                                          : record.status?.toLowerCase().includes('absent')
+                                          ? 'bg-red-100 text-red-800'
+                                          : 'bg-yellow-100 text-yellow-800'
+                                      }`}>
+                                        {record.status || 'N/A'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -2176,6 +2202,7 @@ export default function Reports() {
 
                     const hours = parseFloat(editDayForm.hours) || 0
                     const dateKey = selectedDayForEdit.dateKey
+                    const isManualUser = selectedUserForCalendar.is_manual === true
 
                     // Helper function to create date key
                     const getDateKeyLocal = (date) => {
@@ -2186,17 +2213,118 @@ export default function Reports() {
                       return `${y}-${m}-${day}`
                     }
 
-                    // Update the daily_report data
+                    // Convert hours to HH:MM format
+                    const totalMinutes = Math.round(hours * 60)
+                    const h = Math.floor(totalMinutes / 60)
+                    const m = totalMinutes % 60
+                    const hoursHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+
+                    // Handle manual users separately
+                    if (isManualUser) {
+                      const userId = String(selectedUserForCalendar.employee_id)
+                      const currentRecords = manualUserDailyRecords[userId] || []
+                      
+                      // Find if record exists for this date
+                      const existingIndex = currentRecords.findIndex(record => {
+                        const recordDateKey = getDateKeyLocal(new Date(record.date))
+                        return recordDateKey === dateKey
+                      })
+
+                      let updatedRecords
+                      if (existingIndex >= 0) {
+                        // Update existing record
+                        updatedRecords = [...currentRecords]
+                        updatedRecords[existingIndex] = {
+                          ...updatedRecords[existingIndex],
+                          status: editDayForm.status,
+                          worked_hours: hours,
+                          hours_hm: hoursHm,
+                          date: selectedDayForEdit.date instanceof Date 
+                            ? selectedDayForEdit.date.toISOString() 
+                            : selectedDayForEdit.date
+                        }
+                      } else {
+                        // Create new record
+                        const newRecord = {
+                          employee_id: selectedUserForCalendar.employee_id,
+                          employee_name: selectedUserForCalendar.employee_name,
+                          date: selectedDayForEdit.date instanceof Date 
+                            ? selectedDayForEdit.date.toISOString() 
+                            : selectedDayForEdit.date,
+                          status: editDayForm.status,
+                          worked_hours: hours,
+                          hours_hm: hoursHm,
+                          punches: '',
+                          punch_info: 'Admin Edited'
+                        }
+                        updatedRecords = [...currentRecords, newRecord]
+                      }
+
+                      // Update manual user daily records
+                      const updatedManualRecords = {
+                        ...manualUserDailyRecords,
+                        [userId]: updatedRecords
+                      }
+                      setManualUserDailyRecords(updatedManualRecords)
+                      localStorage.setItem('manualUserDailyRecords', JSON.stringify(updatedManualRecords))
+
+                      // Recalculate monthly summary for this manual user
+                      let totalHours = 0
+                      let presentDays = 0
+                      let absentDays = 0
+                      let autoAssignedDays = 0
+
+                      updatedRecords.forEach(record => {
+                        const recordHours = parseFloat(record.worked_hours || 0)
+                        totalHours += recordHours
+                        const status = (record.status || '').toLowerCase()
+                        
+                        if (status.includes('absent') || (recordHours === 0 && !status.includes('admin'))) {
+                          absentDays++
+                        } else if (status.includes('present') || (recordHours > 0 && !status.includes('wfh') && !status.includes('admin'))) {
+                          presentDays++
+                        } else if (status.includes('auto') || status.includes('assigned') || status.includes('admin') || status.includes('wfh')) {
+                          autoAssignedDays++
+                        }
+                      })
+
+                      // Update manual user in the list
+                      const updatedManualUsers = manualUsers.map(u => {
+                        if (String(u.employee_id) === userId) {
+                          return {
+                            ...u,
+                            total_hours: totalHours,
+                            present_days: presentDays,
+                            absent_days: absentDays,
+                            auto_assigned_days: autoAssignedDays
+                          }
+                        }
+                        return u
+                      })
+
+                      setManualUsers(updatedManualUsers)
+                      localStorage.setItem('manualUsers', JSON.stringify(updatedManualUsers))
+
+                      // Update selectedUserForCalendar to reflect new totals
+                      const updatedUser = updatedManualUsers.find(u => String(u.employee_id) === userId)
+                      if (updatedUser) {
+                        setSelectedUserForCalendar(updatedUser)
+                      }
+
+                      alert(`Successfully updated attendance for Day ${selectedDayForEdit.day}. Monthly summary has been recalculated.`)
+                      setShowEditDayModal(false)
+                      setSelectedDayForEdit(null)
+                      setEditDayForm({ status: '', hours: '', date: '' })
+                      return
+                    }
+
+                    // Update the daily_report data for regular users
                     if (data && data.daily_report) {
                       const updatedDailyReport = data.daily_report.map(record => {
                         const recordDateKey = getDateKeyLocal(new Date(record.date))
                         if (recordDateKey === dateKey && 
                             String(record.employee_id) === String(selectedUserForCalendar.employee_id)) {
-                          // Convert hours to HH:MM format
-                          const totalMinutes = Math.round(hours * 60)
-                          const h = Math.floor(totalMinutes / 60)
-                          const m = totalMinutes % 60
-                          const hoursHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+                          // Hours already converted to HH:MM format above
 
                           return {
                             ...record,
