@@ -1804,7 +1804,7 @@ export default function Reports() {
             <div className="flex-1 overflow-y-auto p-6">
               {(() => {
                 // Check if this is a manual user - they don't need daily_report from data
-                const isManualUser = selectedUserForCalendar.is_manual === true
+                const isManualUser = Boolean(selectedUserForCalendar?.is_manual)
                 
                 // For regular users, check if data and daily_report exist
                 if (!isManualUser && (!data || !data.daily_report || !Array.isArray(data.daily_report))) {
@@ -1818,7 +1818,6 @@ export default function Reports() {
 
                 // Filter daily report for this user - handle both string and number employee_id
                 const userId = selectedUserForCalendar.employee_id
-                const isManualUser = selectedUserForCalendar.is_manual === true
                 
                 // For manual users, use their stored daily records
                 let userDailyData
@@ -2202,7 +2201,7 @@ export default function Reports() {
 
                     const hours = parseFloat(editDayForm.hours) || 0
                     const dateKey = selectedDayForEdit.dateKey
-                    const isManualUser = selectedUserForCalendar.is_manual === true
+                    const isManualUser = Boolean(selectedUserForCalendar?.is_manual)
 
                     // Helper function to create date key
                     const getDateKeyLocal = (date) => {
