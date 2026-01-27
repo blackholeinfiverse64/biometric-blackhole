@@ -96,6 +96,35 @@ export default function Reports() {
   // Merge manual users with monthly_summary
   const monthly_summary = [...originalMonthlySummary, ...manualUsers]
 
+  // Helper function to convert decimal hours to HH:MM format
+  const decimalToHHMM = (decimalHours) => {
+    if (!decimalHours && decimalHours !== 0) return '0:00'
+    const hours = Math.floor(decimalHours)
+    const minutes = Math.round((decimalHours - hours) * 60)
+    return `${hours}:${String(minutes).padStart(2, '0')}`
+  }
+
+  // Helper function to convert HH:MM format to decimal hours
+  const hhmmToDecimal = (hhmm) => {
+    if (!hhmm || typeof hhmm !== 'string') return 0
+    const parts = hhmm.trim().split(':')
+    if (parts.length !== 2) return 0
+    const hours = parseInt(parts[0], 10) || 0
+    const minutes = parseInt(parts[1], 10) || 0
+    if (isNaN(hours) || isNaN(minutes) || minutes < 0 || minutes >= 60) return 0
+    return hours + (minutes / 60)
+  }
+
+  // Helper function to validate HH:MM format
+  const isValidHHMM = (hhmm) => {
+    if (!hhmm || typeof hhmm !== 'string') return false
+    const parts = hhmm.trim().split(':')
+    if (parts.length !== 2) return false
+    const hours = parseInt(parts[0], 10)
+    const minutes = parseInt(parts[1], 10)
+    return !isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours <= 24 && minutes >= 0 && minutes < 60
+  }
+
   // Prepare chart data
   const topEmployees = monthly_summary
     .sort((a, b) => b.total_hours - a.total_hours)
@@ -477,7 +506,7 @@ export default function Reports() {
                       <div className="flex items-center space-x-2">
                         <Calendar className="w-4 h-4 text-primary-600" />
                         <span className="text-primary-600 hover:text-primary-800 hover:underline font-semibold">
-                          {emp.employee_name}
+                      {emp.employee_name}
                         </span>
                       </div>
                     </td>
@@ -514,38 +543,38 @@ export default function Reports() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
-                        {hasRate && hasSalary ? (
-                          <button
-                            onClick={() => {
-                              const confirmedSalary = {
-                                employee_id: emp.employee_id,
-                                employee_name: emp.employee_name,
-                                total_hours: parseFloat(emp.total_hours),
-                                hour_rate: rate,
-                                salary: salary,
-                                confirmed_at: new Date().toISOString()
+                      {hasRate && hasSalary ? (
+                        <button
+                          onClick={() => {
+                            const confirmedSalary = {
+                              employee_id: emp.employee_id,
+                              employee_name: emp.employee_name,
+                              total_hours: parseFloat(emp.total_hours),
+                              hour_rate: rate,
+                              salary: salary,
+                              confirmed_at: new Date().toISOString()
+                            }
+                            // Add to confirmed salaries if not already there
+                            setConfirmedSalaries(prev => {
+                              const exists = prev.find(s => s.employee_id === emp.employee_id)
+                              if (exists) {
+                                return prev.map(s => 
+                                  s.employee_id === emp.employee_id ? confirmedSalary : s
+                                )
                               }
-                              // Add to confirmed salaries if not already there
-                              setConfirmedSalaries(prev => {
-                                const exists = prev.find(s => s.employee_id === emp.employee_id)
-                                if (exists) {
-                                  return prev.map(s => 
-                                    s.employee_id === emp.employee_id ? confirmedSalary : s
-                                  )
-                                }
-                                return [...prev, confirmedSalary]
-                              })
-                              // Switch to confirmed tab
-                              setActiveTab('confirmed')
-                            }}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            <span>Confirm</span>
-                          </button>
-                        ) : (
-                          <span className="text-gray-400 text-xs">-</span>
-                        )}
+                              return [...prev, confirmedSalary]
+                            })
+                            // Switch to confirmed tab
+                            setActiveTab('confirmed')
+                          }}
+                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span>Confirm</span>
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
                         {emp.is_manual && (
                           <button
                             onClick={() => {
@@ -1994,9 +2023,12 @@ export default function Reports() {
                             key={day}
                             onClick={() => {
                               setSelectedDayForEdit({ day, date, attendanceData, dateKey: getDateKey(date) })
+                              // Convert decimal hours to HH:MM format for display
+                              const hoursDecimal = attendanceData?.worked_hours || 0
+                              const hoursHHMM = decimalToHHMM(hoursDecimal)
                               setEditDayForm({
                                 status: attendanceData?.status || '',
-                                hours: attendanceData?.worked_hours || 0,
+                                hours: hoursHHMM,
                                 date: getDateKey(date)
                               })
                               setShowEditDayModal(true)
@@ -2167,18 +2199,39 @@ export default function Reports() {
                   Hours Worked <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   value={editDayForm.hours}
-                  onChange={(e) => setEditDayForm({ ...editDayForm, hours: e.target.value })}
-                  min="0"
-                  max="24"
-                  step="0.01"
+                  onChange={(e) => {
+                    let value = e.target.value
+                    // Allow only digits and colon
+                    value = value.replace(/[^\d:]/g, '')
+                    // Limit to reasonable format (e.g., 24:59)
+                    if (value.includes(':')) {
+                      const parts = value.split(':')
+                      if (parts[0] && parseInt(parts[0]) > 24) {
+                        value = '24:' + (parts[1] || '')
+                      }
+                      if (parts[1] && parts[1].length > 2) {
+                        value = parts[0] + ':' + parts[1].slice(0, 2)
+                      }
+                      if (parts[1] && parseInt(parts[1]) >= 60) {
+                        value = parts[0] + ':59'
+                      }
+                    }
+                    setEditDayForm({ ...editDayForm, hours: value })
+                  }}
                   className="input-field"
-                  placeholder="Enter hours (e.g., 8.5)"
+                  placeholder="Enter hours (e.g., 8:30)"
+                  pattern="\d{1,2}:\d{2}"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter hours in decimal format (e.g., 8.5 for 8 hours 30 minutes)
+                  Enter hours in HH:MM format (e.g., 8:30 for 8 hours 30 minutes, 0:45 for 45 minutes)
                 </p>
+                {editDayForm.hours && !isValidHHMM(editDayForm.hours) && (
+                  <p className="text-xs text-red-500 mt-1">
+                    Invalid format. Please use HH:MM (e.g., 8:30)
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center space-x-3 pt-4">
@@ -2199,7 +2252,14 @@ export default function Reports() {
                       return
                     }
 
-                    const hours = parseFloat(editDayForm.hours) || 0
+                    // Validate HH:MM format
+                    if (!isValidHHMM(editDayForm.hours)) {
+                      alert('Invalid hours format. Please use HH:MM format (e.g., 8:30)')
+                      return
+                    }
+
+                    // Convert HH:MM to decimal hours
+                    const hours = hhmmToDecimal(editDayForm.hours)
                     const dateKey = selectedDayForEdit.dateKey
                     const isManualUser = Boolean(selectedUserForCalendar?.is_manual)
 
