@@ -64,7 +64,7 @@ export default function Reports() {
   const [selectedUserForCalendar, setSelectedUserForCalendar] = useState(null)
   const [showEditDayModal, setShowEditDayModal] = useState(false)
   const [selectedDayForEdit, setSelectedDayForEdit] = useState(null)
-  const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', date: '' })
+  const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', minutes: '', date: '' })
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -96,26 +96,60 @@ export default function Reports() {
   // Merge manual users with monthly_summary
   const monthly_summary = [...originalMonthlySummary, ...manualUsers]
 
-  // Helper function to convert decimal hours to HH:MM format
-  const decimalToHHMM = (decimalHours) => {
-    if (!decimalHours && decimalHours !== 0) return '0:00'
-    const hours = Math.floor(decimalHours)
-    const minutes = Math.round((decimalHours - hours) * 60)
-    return `${hours}:${String(minutes).padStart(2, '0')}`
-  }
-
-  // Helper function to convert HH:MM format to decimal hours
-  const hhmmToDecimal = (hhmm) => {
+  // ========== HH:MM Format Helper Functions ==========
+  
+  // Convert HH:MM to total minutes (for calculations)
+  const hhmmToMinutes = (hhmm) => {
     if (!hhmm || typeof hhmm !== 'string') return 0
     const parts = hhmm.trim().split(':')
     if (parts.length !== 2) return 0
     const hours = parseInt(parts[0], 10) || 0
     const minutes = parseInt(parts[1], 10) || 0
     if (isNaN(hours) || isNaN(minutes) || minutes < 0 || minutes >= 60) return 0
-    return hours + (minutes / 60)
+    return (hours * 60) + minutes
   }
 
-  // Helper function to validate HH:MM format
+  // Convert total minutes to HH:MM format
+  const minutesToHHMM = (totalMinutes) => {
+    if (!totalMinutes && totalMinutes !== 0) return '0:00'
+    const minutes = Math.abs(Math.round(totalMinutes))
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return `${hours}:${String(mins).padStart(2, '0')}`
+  }
+
+  // Add two HH:MM times together
+  const addHHMM = (time1, time2) => {
+    const minutes1 = hhmmToMinutes(time1)
+    const minutes2 = hhmmToMinutes(time2)
+    return minutesToHHMM(minutes1 + minutes2)
+  }
+
+  // Sum an array of HH:MM times
+  const sumHHMM = (times) => {
+    if (!Array.isArray(times) || times.length === 0) return '0:00'
+    const totalMinutes = times.reduce((sum, time) => {
+      return sum + hhmmToMinutes(time)
+    }, 0)
+    return minutesToHHMM(totalMinutes)
+  }
+
+  // Multiply HH:MM by a number (for salary calculations)
+  const multiplyHHMM = (hhmm, multiplier) => {
+    const minutes = hhmmToMinutes(hhmm)
+    const result = minutes * multiplier
+    return minutesToHHMM(result)
+  }
+
+  // Convert hours and minutes to HH:MM format
+  const hoursMinutesToHHMM = (hours, minutes) => {
+    const h = parseInt(hours, 10) || 0
+    const m = parseInt(minutes, 10) || 0
+    if (m < 0 || m >= 60) return '0:00'
+    return `${h}:${String(m).padStart(2, '0')}`
+  }
+
+  // Validate HH:MM format
   const isValidHHMM = (hhmm) => {
     if (!hhmm || typeof hhmm !== 'string') return false
     const parts = hhmm.trim().split(':')
@@ -125,13 +159,52 @@ export default function Reports() {
     return !isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours <= 24 && minutes >= 0 && minutes < 60
   }
 
-  // Prepare chart data
+  // Get HH:MM from data (handles both old decimal and new HH:MM format)
+  const getHHMM = (data) => {
+    if (!data) return '0:00'
+    // If it's already HH:MM format, return it
+    if (typeof data === 'string' && data.includes(':')) {
+      return data
+    }
+    // If it's a number (decimal), convert it
+    if (typeof data === 'number') {
+      const hours = Math.floor(data)
+      const minutes = Math.round((data - hours) * 60)
+      return `${hours}:${String(minutes).padStart(2, '0')}`
+    }
+    // Try to get hours_hm or worked_hours from object
+    if (typeof data === 'object') {
+      if (data.hours_hm) return data.hours_hm
+      if (data.worked_hours) {
+        const h = typeof data.worked_hours === 'string' ? parseFloat(data.worked_hours) : data.worked_hours
+        const hours = Math.floor(h)
+        const minutes = Math.round((h - hours) * 60)
+        return `${hours}:${String(minutes).padStart(2, '0')}`
+      }
+      if (data.total_hours_hm) return data.total_hours_hm
+      if (data.total_hours) {
+        const h = typeof data.total_hours === 'string' ? parseFloat(data.total_hours) : data.total_hours
+        const hours = Math.floor(h)
+        const minutes = Math.round((h - hours) * 60)
+        return `${hours}:${String(minutes).padStart(2, '0')}`
+      }
+    }
+    return '0:00'
+  }
+
+  // Prepare chart data (using minutes for sorting, but display HH:MM)
   const topEmployees = monthly_summary
-    .sort((a, b) => b.total_hours - a.total_hours)
-    .slice(0, 10)
     .map((emp) => ({
       name: emp.employee_name,
-      hours: parseFloat(emp.total_hours),
+      total_hours_hm: getHHMM(emp),
+      total_minutes: hhmmToMinutes(getHHMM(emp))
+    }))
+    .sort((a, b) => b.total_minutes - a.total_minutes)
+    .slice(0, 10)
+    .map((emp) => ({
+      name: emp.name,
+      hours: hhmmToMinutes(emp.total_hours_hm) / 60, // Convert to decimal for chart display (chart library needs numbers)
+      hours_hm: emp.total_hours_hm
     }))
 
   const statusDistribution = [
@@ -189,7 +262,9 @@ export default function Reports() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-green-100 text-sm mb-1">Total Hours</p>
-              <p className="text-3xl font-bold">{statistics.total_hours.toFixed(2)}</p>
+              <p className="text-3xl font-bold">
+                {sumHHMM(monthly_summary.map(emp => getHHMM(emp)))}
+              </p>
             </div>
             <Clock className="w-12 h-12 text-green-200" />
           </div>
@@ -209,7 +284,15 @@ export default function Reports() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-orange-100 text-sm mb-1">Avg Hours/Employee</p>
-              <p className="text-3xl font-bold">{statistics.avg_hours_per_employee.toFixed(2)}</p>
+              <p className="text-3xl font-bold">
+                {monthly_summary.length > 0 
+                  ? minutesToHHMM(
+                      Math.round(
+                        monthly_summary.reduce((sum, emp) => sum + hhmmToMinutes(getHHMM(emp)), 0) / monthly_summary.length
+                      )
+                    )
+                  : '0:00'}
+              </p>
             </div>
             <FileText className="w-12 h-12 text-orange-200" />
           </div>
@@ -281,7 +364,7 @@ export default function Reports() {
             <div className="bg-gray-50 p-4 rounded-lg">
               <p className="text-sm text-gray-600">Total Hours</p>
               <p className="text-2xl font-bold text-gray-900">
-                {parseFloat(selectedEmployee.total_hours).toFixed(2)}
+                {getHHMM(selectedEmployee)}
               </p>
             </div>
             <div className="bg-gray-50 p-4 rounded-lg">
@@ -472,7 +555,10 @@ export default function Reports() {
             <tbody className="bg-white divide-y divide-gray-200">
               {monthly_summary.map((emp) => {
                 const rate = parseFloat(hourRates[emp.employee_id]) || 0
-                const salary = parseFloat(emp.total_hours) * rate
+                // Convert HH:MM to decimal hours for salary calculation
+                const totalHoursHHMM = getHHMM(emp)
+                const totalHoursDecimal = hhmmToMinutes(totalHoursHHMM) / 60
+                const salary = totalHoursDecimal * rate
                 const hasRate = rate > 0
                 const hasSalary = salary > 0
                 return (
@@ -536,7 +622,7 @@ export default function Reports() {
                       {emp.is_manual ? '-' : (emp.absent_days || 0)} days
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                      {parseFloat(emp.total_hours).toFixed(2)} hrs
+                      {totalHoursHHMM} hrs
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-green-600">
                       {hasSalary ? `₹${salary.toFixed(2)}` : '-'}
@@ -637,11 +723,13 @@ export default function Reports() {
                   })
                   .map(emp => {
                     const rate = parseFloat(hourRates[emp.employee_id]) || 0
-                    const salary = parseFloat(emp.total_hours) * rate
+                    const totalHoursHHMM = getHHMM(emp)
+                    const totalHoursDecimal = hhmmToMinutes(totalHoursHHMM) / 60
+                    const salary = totalHoursDecimal * rate
                     return {
                       employee_id: emp.employee_id,
                       employee_name: emp.employee_name,
-                      total_hours: parseFloat(emp.total_hours),
+                      total_hours: totalHoursHHMM, // Store as HH:MM format
                       hour_rate: rate,
                       salary: salary
                     }
@@ -663,11 +751,13 @@ export default function Reports() {
                   .filter(emp => selectedIds.includes(emp.employee_id.toString()))
                   .map(emp => {
                     const rate = parseFloat(hourRates[emp.employee_id]) || 0
-                    const salary = parseFloat(emp.total_hours) * rate
+                    const totalHoursHHMM = getHHMM(emp)
+                    const totalHoursDecimal = hhmmToMinutes(totalHoursHHMM) / 60
+                    const salary = totalHoursDecimal * rate
                     return {
                       employee_id: emp.employee_id,
                       employee_name: emp.employee_name,
-                      total_hours: parseFloat(emp.total_hours),
+                      total_hours: totalHoursHHMM, // Store as HH:MM format
                       hour_rate: rate,
                       salary: salary,
                       confirmed_at: new Date().toISOString()
@@ -705,7 +795,9 @@ export default function Reports() {
               <span className="text-xl font-bold text-green-600">
                 ₹{monthly_summary.reduce((sum, emp) => {
                   const rate = parseFloat(hourRates[emp.employee_id]) || 0
-                  return sum + (parseFloat(emp.total_hours) * rate)
+                  const totalHoursHHMM = getHHMM(emp)
+                  const totalHoursDecimal = hhmmToMinutes(totalHoursHHMM) / 60
+                  return sum + (totalHoursDecimal * rate)
                 }, 0).toFixed(2)}
               </span>
             </div>
@@ -755,7 +847,7 @@ export default function Reports() {
                             {emp.employee_name}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {parseFloat(emp.total_hours || 0).toFixed(2)} hrs
+                            {getHHMM(emp)} hrs
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                             ₹{parseFloat(emp.hour_rate || 0).toFixed(2)}
@@ -769,7 +861,7 @@ export default function Reports() {
                                 onClick={() => {
                                   setSelectedEmployeeForAction({ ...emp, index })
                                   setEditFormData({
-                                    total_hours: emp.total_hours || '',
+                                    total_hours: getHHMM(emp), // Convert to HH:MM format
                                     hour_rate: emp.hour_rate || '',
                                     salary: emp.salary || ''
                                   })
@@ -932,28 +1024,43 @@ export default function Reports() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Total Hours
+                    Total Hours (HH:MM format)
                   </label>
                   <div className="flex items-center space-x-2">
                     <input
-                      type="number"
+                      type="text"
                       value={editFormData.total_hours}
                       onChange={(e) => {
-                        const hours = parseFloat(e.target.value) || 0
+                        let value = e.target.value
+                        // Allow only digits and colon
+                        value = value.replace(/[^\d:]/g, '')
+                        // Limit to reasonable format
+                        if (value.includes(':')) {
+                          const parts = value.split(':')
+                          if (parts[0] && parseInt(parts[0]) > 24) {
+                            value = '24:' + (parts[1] || '')
+                          }
+                          if (parts[1] && parts[1].length > 2) {
+                            value = parts[0] + ':' + parts[1].slice(0, 2)
+                          }
+                          if (parts[1] && parseInt(parts[1]) >= 60) {
+                            value = parts[0] + ':59'
+                          }
+                        }
                         const rate = parseFloat(editFormData.hour_rate) || 0
+                        const hoursDecimal = isValidHHMM(value) ? hhmmToMinutes(value) / 60 : 0
                         setEditFormData({
                           ...editFormData,
-                          total_hours: e.target.value,
-                          salary: (hours * rate).toFixed(2)
+                          total_hours: value,
+                          salary: (hoursDecimal * rate).toFixed(2)
                         })
                       }}
-                      min="0"
-                      step="0.01"
                       className="flex-1 input-field"
-                      placeholder="Enter hours"
+                      placeholder="8:30"
                     />
                     <span className="text-sm text-gray-600">hrs</span>
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">Format: HH:MM (e.g., 8:30 for 8 hours 30 minutes)</p>
                 </div>
 
                 <div>
@@ -967,11 +1074,11 @@ export default function Reports() {
                       value={editFormData.hour_rate}
                       onChange={(e) => {
                         const rate = parseFloat(e.target.value) || 0
-                        const hours = parseFloat(editFormData.total_hours) || 0
+                        const hoursDecimal = isValidHHMM(editFormData.total_hours) ? hhmmToMinutes(editFormData.total_hours) / 60 : 0
                         setEditFormData({
                           ...editFormData,
                           hour_rate: e.target.value,
-                          salary: (hours * rate).toFixed(2)
+                          salary: (hoursDecimal * rate).toFixed(2)
                         })
                       }}
                       min="0"
@@ -993,8 +1100,8 @@ export default function Reports() {
                       value={editFormData.salary}
                       onChange={(e) => {
                         const salary = parseFloat(e.target.value) || 0
-                        const hours = parseFloat(editFormData.total_hours) || 0
-                        const rate = hours > 0 ? (salary / hours).toFixed(2) : 0
+                        const hoursDecimal = isValidHHMM(editFormData.total_hours) ? hhmmToMinutes(editFormData.total_hours) / 60 : 0
+                        const rate = hoursDecimal > 0 ? (salary / hoursDecimal).toFixed(2) : 0
                         setEditFormData({
                           ...editFormData,
                           salary: e.target.value,
@@ -1026,9 +1133,11 @@ export default function Reports() {
                   // Update the confirmed salaries array
                   const updated = confirmedSalaries.map((emp, i) => {
                     if (i === selectedEmployeeForAction.index) {
+                      // Store total_hours as HH:MM format
+                      const totalHoursHHMM = isValidHHMM(editFormData.total_hours) ? editFormData.total_hours : '0:00'
                       return {
                         ...emp,
-                        total_hours: parseFloat(editFormData.total_hours) || 0,
+                        total_hours: totalHoursHHMM, // Store as HH:MM format
                         hour_rate: parseFloat(editFormData.hour_rate) || 0,
                         salary: parseFloat(editFormData.salary) || 0
                       }
@@ -1292,7 +1401,7 @@ export default function Reports() {
                           doc.text(name, tableStartX + 25, yPos)
                           
                           // Total Hours (right aligned)
-                          doc.text(`${parseFloat(emp.total_hours || 0).toFixed(2)} hrs`, tableStartX + 75, yPos)
+                          doc.text(`${getHHMM(emp)} hrs`, tableStartX + 75, yPos)
                           
                           // Hour Rate (right aligned)
                           const hourRateValue = formatNumber(parseFloat(emp.hour_rate || 0))
@@ -1513,7 +1622,7 @@ export default function Reports() {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
                                   <span className="text-sm text-gray-700 font-medium">
-                                    {parseFloat(emp.total_hours || 0).toFixed(2)} <span className="text-gray-500 text-xs">hrs</span>
+                                    {getHHMM(emp)} <span className="text-gray-500 text-xs">hrs</span>
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -1681,21 +1790,34 @@ export default function Reports() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Total Hours <span className="text-red-500">*</span>
+                  Total Hours (HH:MM format) <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   value={manualUserForm.total_hours}
                   onChange={(e) => {
-                    const hours = parseFloat(e.target.value) || 0
-                    const rate = parseFloat(manualUserForm.hour_rate) || 0
-                    setManualUserForm({ ...manualUserForm, total_hours: e.target.value })
+                    let value = e.target.value
+                    // Allow only digits and colon
+                    value = value.replace(/[^\d:]/g, '')
+                    // Limit to reasonable format
+                    if (value.includes(':')) {
+                      const parts = value.split(':')
+                      if (parts[0] && parseInt(parts[0]) > 24) {
+                        value = '24:' + (parts[1] || '')
+                      }
+                      if (parts[1] && parts[1].length > 2) {
+                        value = parts[0] + ':' + parts[1].slice(0, 2)
+                      }
+                      if (parts[1] && parseInt(parts[1]) >= 60) {
+                        value = parts[0] + ':59'
+                      }
+                    }
+                    setManualUserForm({ ...manualUserForm, total_hours: value })
                   }}
                   className="input-field"
-                  placeholder="Enter total hours"
-                  min="0"
-                  step="0.01"
+                  placeholder="8:30"
                 />
+                <p className="text-xs text-gray-500 mt-1">Format: HH:MM (e.g., 8:30 for 8 hours 30 minutes)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1739,10 +1861,16 @@ export default function Reports() {
                     return
                   }
                   
+                  // Validate HH:MM format
+                  if (!isValidHHMM(manualUserForm.total_hours)) {
+                    alert('Invalid hours format. Please use HH:MM format (e.g., 8:30)')
+                    return
+                  }
+                  
                   const newUser = {
                     employee_id: parseInt(manualUserForm.employee_id),
                     employee_name: manualUserForm.employee_name,
-                    total_hours: parseFloat(manualUserForm.total_hours) || 0,
+                    total_hours: manualUserForm.total_hours, // Store as HH:MM format
                     present_days: 0,
                     absent_days: 0,
                     auto_assigned_days: 0,
@@ -1815,7 +1943,7 @@ export default function Reports() {
                 </h3>
                 <p className="text-sm text-primary-100 mt-1">
                   Employee ID: {selectedUserForCalendar.employee_id} | 
-                  Total Hours: {parseFloat(selectedUserForCalendar.total_hours || 0).toFixed(2)} hrs
+                  Total Hours: {getHHMM(selectedUserForCalendar)} hrs
                 </p>
               </div>
               <button
@@ -1983,11 +2111,13 @@ export default function Reports() {
                         let textColor = 'text-gray-400'
                         let borderColor = 'border-gray-200'
                         let statusText = 'No Data'
-                        let workedHours = 0 // Initialize workedHours outside the if block
+                        let workedHoursHHMM = '0:00' // Initialize workedHoursHHMM outside the if block
+                        let workedMinutes = 0 // For comparison
 
                         if (hasData) {
                           const status = attendanceData.status?.toLowerCase() || ''
-                          workedHours = parseFloat(attendanceData.worked_hours || 0)
+                          workedHoursHHMM = getHHMM(attendanceData) // Get HH:MM format
+                          workedMinutes = hhmmToMinutes(workedHoursHHMM) // Convert to minutes for comparison
 
                           // Color coding: Present - green, Absent - red, Admin selected - blue, WFH - Yellow
                           if (status.includes('wfh') || status.includes('work from home')) {
@@ -2000,12 +2130,12 @@ export default function Reports() {
                             textColor = 'text-blue-900'
                             borderColor = 'border-blue-300'
                             statusText = 'Admin Selected'
-                          } else if (status.includes('absent') || workedHours === 0) {
+                          } else if (status.includes('absent') || workedMinutes === 0) {
                             bgColor = 'bg-red-50'
                             textColor = 'text-red-900'
                             borderColor = 'border-red-300'
                             statusText = 'Absent'
-                          } else if (status.includes('present') || workedHours > 0) {
+                          } else if (status.includes('present') || workedMinutes > 0) {
                             bgColor = 'bg-green-50'
                             textColor = 'text-green-900'
                             borderColor = 'border-green-300'
@@ -2023,12 +2153,15 @@ export default function Reports() {
                             key={day}
                             onClick={() => {
                               setSelectedDayForEdit({ day, date, attendanceData, dateKey: getDateKey(date) })
-                              // Convert decimal hours to HH:MM format for display
-                              const hoursDecimal = attendanceData?.worked_hours || 0
-                              const hoursHHMM = decimalToHHMM(hoursDecimal)
+                              // Convert HH:MM to separate hours and minutes for display
+                              const hoursHHMM = getHHMM(attendanceData || {})
+                              const parts = hoursHHMM.split(':')
+                              const hours = parseInt(parts[0], 10) || 0
+                              const minutes = parseInt(parts[1], 10) || 0
                               setEditDayForm({
                                 status: attendanceData?.status || '',
-                                hours: hoursHHMM,
+                                hours: hours || '',
+                                minutes: minutes || '',
                                 date: getDateKey(date)
                               })
                               setShowEditDayModal(true)
@@ -2046,13 +2179,8 @@ export default function Reports() {
                             {hasData && (
                               <div className="text-xs space-y-0.5">
                                 <div className={`font-bold ${textColor}`}>
-                                  {workedHours.toFixed(2)}h
+                                  {workedHoursHHMM}
                                 </div>
-                                {attendanceData.hours_hm && (
-                                  <div className="text-xs text-gray-600">
-                                    {attendanceData.hours_hm}
-                                  </div>
-                                )}
                                 {attendanceData.punches && (
                                   <div className="text-xs text-gray-500 truncate" title={attendanceData.punches}>
                                     {attendanceData.punches.length > 10 
@@ -2106,14 +2234,11 @@ export default function Reports() {
                                       {record.punches || record.punch_info || '-'}
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
-                                      {parseFloat(record.worked_hours || 0).toFixed(2)} hrs
-                                      {record.hours_hm && (
-                                        <span className="text-gray-500 ml-2">({record.hours_hm})</span>
-                                      )}
+                                      {getHHMM(record)} hrs
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap text-sm">
                                       <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                        record.status?.toLowerCase().includes('present') || parseFloat(record.worked_hours || 0) > 0
+                                        record.status?.toLowerCase().includes('present') || hhmmToMinutes(getHHMM(record)) > 0
                                           ? 'bg-green-100 text-green-800'
                                           : record.status?.toLowerCase().includes('absent')
                                           ? 'bg-red-100 text-red-800'
@@ -2149,7 +2274,7 @@ export default function Reports() {
                 onClick={() => {
                   setShowEditDayModal(false)
                   setSelectedDayForEdit(null)
-                  setEditDayForm({ status: '', hours: '', date: '' })
+                  setEditDayForm({ status: '', hours: '', minutes: '', date: '' })
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -2198,40 +2323,48 @@ export default function Reports() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Hours Worked <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={editDayForm.hours}
-                  onChange={(e) => {
-                    let value = e.target.value
-                    // Allow only digits and colon
-                    value = value.replace(/[^\d:]/g, '')
-                    // Limit to reasonable format (e.g., 24:59)
-                    if (value.includes(':')) {
-                      const parts = value.split(':')
-                      if (parts[0] && parseInt(parts[0]) > 24) {
-                        value = '24:' + (parts[1] || '')
-                      }
-                      if (parts[1] && parts[1].length > 2) {
-                        value = parts[0] + ':' + parts[1].slice(0, 2)
-                      }
-                      if (parts[1] && parseInt(parts[1]) >= 60) {
-                        value = parts[0] + ':59'
-                      }
-                    }
-                    setEditDayForm({ ...editDayForm, hours: value })
-                  }}
-                  className="input-field"
-                  placeholder="Enter hours (e.g., 8:30)"
-                  pattern="\d{1,2}:\d{2}"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter hours in HH:MM format (e.g., 8:30 for 8 hours 30 minutes, 0:45 for 45 minutes)
+                <div className="flex items-center space-x-3">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">Hours</label>
+                    <input
+                      type="number"
+                      value={editDayForm.hours}
+                      onChange={(e) => {
+                        let value = parseInt(e.target.value, 10) || 0
+                        if (value < 0) value = 0
+                        if (value > 24) value = 24
+                        setEditDayForm({ ...editDayForm, hours: value === 0 ? '' : value })
+                      }}
+                      min="0"
+                      max="24"
+                      className="input-field"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="flex items-center pt-6">
+                    <span className="text-gray-500 font-semibold">:</span>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">Minutes</label>
+                    <input
+                      type="number"
+                      value={editDayForm.minutes}
+                      onChange={(e) => {
+                        let value = parseInt(e.target.value, 10) || 0
+                        if (value < 0) value = 0
+                        if (value >= 60) value = 59
+                        setEditDayForm({ ...editDayForm, minutes: value === 0 ? '' : value })
+                      }}
+                      min="0"
+                      max="59"
+                      className="input-field"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Enter hours and minutes separately (e.g., 8 hours and 30 minutes)
                 </p>
-                {editDayForm.hours && !isValidHHMM(editDayForm.hours) && (
-                  <p className="text-xs text-red-500 mt-1">
-                    Invalid format. Please use HH:MM (e.g., 8:30)
-                  </p>
-                )}
               </div>
 
               <div className="flex items-center space-x-3 pt-4">
@@ -2239,7 +2372,7 @@ export default function Reports() {
                   onClick={() => {
                     setShowEditDayModal(false)
                     setSelectedDayForEdit(null)
-                    setEditDayForm({ status: '', hours: '', date: '' })
+                    setEditDayForm({ status: '', hours: '', minutes: '', date: '' })
                   }}
                   className="flex-1 btn-secondary"
                 >
@@ -2247,19 +2380,29 @@ export default function Reports() {
                 </button>
                 <button
                   onClick={() => {
-                    if (!editDayForm.status || editDayForm.hours === '') {
-                      alert('Please fill in both Status and Hours')
+                    if (!editDayForm.status || (editDayForm.hours === '' && editDayForm.minutes === '')) {
+                      alert('Please fill in Status and at least Hours or Minutes')
                       return
                     }
 
-                    // Validate HH:MM format
-                    if (!isValidHHMM(editDayForm.hours)) {
-                      alert('Invalid hours format. Please use HH:MM format (e.g., 8:30)')
+                    // Convert hours and minutes to decimal hours
+                    const hoursValue = parseInt(editDayForm.hours, 10) || 0
+                    const minutesValue = parseInt(editDayForm.minutes, 10) || 0
+                    
+                    // Validate minutes (should be 0-59)
+                    if (minutesValue < 0 || minutesValue >= 60) {
+                      alert('Minutes must be between 0 and 59')
+                      return
+                    }
+                    
+                    // Validate hours (should be 0-24)
+                    if (hoursValue < 0 || hoursValue > 24) {
+                      alert('Hours must be between 0 and 24')
                       return
                     }
 
-                    // Convert HH:MM to decimal hours
-                    const hours = hhmmToDecimal(editDayForm.hours)
+                    // Convert to HH:MM format directly
+                    const hoursHm = hoursMinutesToHHMM(hoursValue, minutesValue)
                     const dateKey = selectedDayForEdit.dateKey
                     const isManualUser = Boolean(selectedUserForCalendar?.is_manual)
 
@@ -2271,12 +2414,6 @@ export default function Reports() {
                       const day = String(d.getDate()).padStart(2, '0')
                       return `${y}-${m}-${day}`
                     }
-
-                    // Convert hours to HH:MM format
-                    const totalMinutes = Math.round(hours * 60)
-                    const h = Math.floor(totalMinutes / 60)
-                    const m = totalMinutes % 60
-                    const hoursHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 
                     // Handle manual users separately
                     if (isManualUser) {
@@ -2296,7 +2433,7 @@ export default function Reports() {
                         updatedRecords[existingIndex] = {
                           ...updatedRecords[existingIndex],
                           status: editDayForm.status,
-                          worked_hours: hours,
+                          worked_hours: hoursHm, // Store as HH:MM format
                           hours_hm: hoursHm,
                           date: selectedDayForEdit.date instanceof Date 
                             ? selectedDayForEdit.date.toISOString() 
@@ -2311,7 +2448,7 @@ export default function Reports() {
                             ? selectedDayForEdit.date.toISOString() 
                             : selectedDayForEdit.date,
                           status: editDayForm.status,
-                          worked_hours: hours,
+                          worked_hours: hoursHm, // Store as HH:MM format
                           hours_hm: hoursHm,
                           punches: '',
                           punch_info: 'Admin Edited'
@@ -2328,19 +2465,20 @@ export default function Reports() {
                       localStorage.setItem('manualUserDailyRecords', JSON.stringify(updatedManualRecords))
 
                       // Recalculate monthly summary for this manual user
-                      let totalHours = 0
+                      let totalHoursHHMM = '0:00'
                       let presentDays = 0
                       let absentDays = 0
                       let autoAssignedDays = 0
 
                       updatedRecords.forEach(record => {
-                        const recordHours = parseFloat(record.worked_hours || 0)
-                        totalHours += recordHours
+                        const recordHoursHHMM = getHHMM(record) // Get HH:MM format
+                        totalHoursHHMM = addHHMM(totalHoursHHMM, recordHoursHHMM)
+                        const recordMinutes = hhmmToMinutes(recordHoursHHMM)
                         const status = (record.status || '').toLowerCase()
                         
-                        if (status.includes('absent') || (recordHours === 0 && !status.includes('admin'))) {
+                        if (status.includes('absent') || (recordMinutes === 0 && !status.includes('admin'))) {
                           absentDays++
-                        } else if (status.includes('present') || (recordHours > 0 && !status.includes('wfh') && !status.includes('admin'))) {
+                        } else if (status.includes('present') || (recordMinutes > 0 && !status.includes('wfh') && !status.includes('admin'))) {
                           presentDays++
                         } else if (status.includes('auto') || status.includes('assigned') || status.includes('admin') || status.includes('wfh')) {
                           autoAssignedDays++
@@ -2352,7 +2490,7 @@ export default function Reports() {
                         if (String(u.employee_id) === userId) {
                           return {
                             ...u,
-                            total_hours: totalHours,
+                            total_hours: totalHoursHHMM, // Store as HH:MM format
                             present_days: presentDays,
                             absent_days: absentDays,
                             auto_assigned_days: autoAssignedDays
@@ -2373,7 +2511,7 @@ export default function Reports() {
                       alert(`Successfully updated attendance for Day ${selectedDayForEdit.day}. Monthly summary has been recalculated.`)
                       setShowEditDayModal(false)
                       setSelectedDayForEdit(null)
-                      setEditDayForm({ status: '', hours: '', date: '' })
+                      setEditDayForm({ status: '', hours: '', minutes: '', date: '' })
                       return
                     }
 
@@ -2388,7 +2526,7 @@ export default function Reports() {
                           return {
                             ...record,
                             status: editDayForm.status,
-                            worked_hours: hours,
+                            worked_hours: hoursHm, // Store as HH:MM format
                             hours_hm: hoursHm
                           }
                         }
@@ -2409,8 +2547,8 @@ export default function Reports() {
                           employee_name: selectedUserForCalendar.employee_name,
                           date: selectedDayForEdit.date,
                           status: editDayForm.status,
-                          worked_hours: hours,
-                          hours_hm: `${String(Math.floor(hours)).padStart(2, '0')}:${String(Math.round((hours % 1) * 60)).padStart(2, '0')}`,
+                          worked_hours: hoursHm, // Store as HH:MM format
+                          hours_hm: hoursHm,
                           punches: '',
                           punch_info: 'Admin Edited'
                         }
@@ -2436,38 +2574,33 @@ export default function Reports() {
                         const userRecords = employeeRecordsMap.get(empId) || []
                         
                         if (userRecords.length > 0) {
-                          let totalHours = 0
+                          let totalHoursHHMM = '0:00'
                           let presentDays = 0
                           let absentDays = 0
                           let autoAssignedDays = 0
                           
                           userRecords.forEach(record => {
-                            const hours = parseFloat(record.worked_hours || 0)
-                            totalHours += hours
+                            const recordHoursHHMM = getHHMM(record) // Get HH:MM format
+                            totalHoursHHMM = addHHMM(totalHoursHHMM, recordHoursHHMM)
+                            const recordMinutes = hhmmToMinutes(recordHoursHHMM)
                             const status = (record.status || '').toLowerCase()
                             
-                            if (status.includes('absent') || (hours === 0 && !status.includes('admin'))) {
+                            if (status.includes('absent') || (recordMinutes === 0 && !status.includes('admin'))) {
                               absentDays++
-                            } else if (status.includes('present') || (hours > 0 && !status.includes('wfh') && !status.includes('admin'))) {
+                            } else if (status.includes('present') || (recordMinutes > 0 && !status.includes('wfh') && !status.includes('admin'))) {
                               presentDays++
                             } else if (status.includes('auto') || status.includes('assigned') || status.includes('admin') || status.includes('wfh')) {
                               autoAssignedDays++
                             }
                           })
                           
-                          // Convert total hours to HH:MM format
-                          const totalMinutes = Math.round(totalHours * 60)
-                          const h = Math.floor(totalMinutes / 60)
-                          const m = totalMinutes % 60
-                          const totalHoursHm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-                          
                           return {
                             ...emp,
-                            total_hours: totalHours,
+                            total_hours: totalHoursHHMM, // Store as HH:MM format
                             present_days: presentDays,
                             absent_days: absentDays,
                             auto_assigned_days: autoAssignedDays,
-                            total_hours_hm: totalHoursHm
+                            total_hours_hm: totalHoursHHMM
                           }
                         }
                         return emp
@@ -2515,7 +2648,7 @@ export default function Reports() {
                       alert(`Successfully updated attendance for Day ${selectedDayForEdit.day}. Monthly summary has been recalculated.`)
                       setShowEditDayModal(false)
                       setSelectedDayForEdit(null)
-                      setEditDayForm({ status: '', hours: '', date: '' })
+                      setEditDayForm({ status: '', hours: '', minutes: '', date: '' })
                     }
                   }}
                   className="flex-1 btn-primary"
