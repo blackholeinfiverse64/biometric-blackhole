@@ -1253,7 +1253,16 @@ export default function Reports() {
       {activeTab === 'finalized' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Finalized Salaries by Month</h3>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setActiveTab('summary')}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-2"
+              >
+                <ChevronDown className="w-4 h-4 rotate-90" />
+                <span>Back to Reports</span>
+              </button>
+              <h3 className="text-lg font-semibold text-gray-900">Finalized Salaries by Month</h3>
+            </div>
             {Object.keys(finalizedSalaries).length > 0 && (
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-2">
