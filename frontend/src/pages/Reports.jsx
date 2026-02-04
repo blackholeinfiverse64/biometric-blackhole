@@ -1002,8 +1002,8 @@ export default function Reports() {
                       
                       alert(`${actionMessage}. All report data has been cleared.`)
                       
-                      // Switch to finalized tab to show the saved data
-                      setActiveTab('finalized')
+                      // Switch to monthly summary tab after finalizing
+                      setActiveTab('summary')
                     }}
                     className="btn-primary flex items-center space-x-2"
                   >
