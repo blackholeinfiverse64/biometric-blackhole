@@ -505,23 +505,24 @@ export default function Reports() {
                 </button>
               )}
             </div>
-          <button
-            onClick={() => {
-              setManualUserForm({
-                employee_id: '',
-                employee_name: '',
-                total_hours: '',
-                hour_rate: '',
-                is_manual: true
-              })
-              setEditingManualUser(null)
-              setShowAddManualUserModal(true)
-            }}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Manual User</span>
-          </button>
+            <button
+              onClick={() => {
+                setManualUserForm({
+                  employee_id: '',
+                  employee_name: '',
+                  total_hours: '',
+                  hour_rate: '',
+                  is_manual: true
+                })
+                setEditingManualUser(null)
+                setShowAddManualUserModal(true)
+              }}
+              className="btn-primary flex items-center space-x-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Manual User</span>
+            </button>
+          </div>
           {Object.keys(selectedEmployees).filter(id => selectedEmployees[id]).length > 0 && (
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2">
@@ -2781,7 +2782,6 @@ export default function Reports() {
           </div>
         </div>
       )}
-    </div>
     </div>
   )
 }
