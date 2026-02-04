@@ -883,8 +883,8 @@ export default function Reports() {
                                   setSelectedEmployeeForAction({ ...emp, index })
                                   setEditFormData({
                                     total_hours: getHHMM(emp), // Convert to HH:MM format
-                                    hour_rate: emp.hour_rate || '',
-                                    salary: emp.salary || ''
+                                    hour_rate: emp.hour_rate ? String(emp.hour_rate) : '',
+                                    salary: emp.salary ? String(emp.salary) : ''
                                   })
                                   setShowUpdateModal(true)
                                 }}
@@ -1154,14 +1154,30 @@ export default function Reports() {
                   // Update the confirmed salaries array
                   const updated = confirmedSalaries.map((emp, i) => {
                     if (i === selectedEmployeeForAction.index) {
-                      // Store total_hours as HH:MM format
-                      const totalHoursHHMM = isValidHHMM(editFormData.total_hours) ? editFormData.total_hours : '0:00'
-                      return {
-                        ...emp,
-                        total_hours: totalHoursHHMM, // Store as HH:MM format
-                        hour_rate: parseFloat(editFormData.hour_rate) || 0,
-                        salary: parseFloat(editFormData.salary) || 0
+                      // Only update fields that have valid values, keep existing values otherwise
+                      const updatedEmp = { ...emp }
+                      
+                      // Update total_hours only if valid HH:MM format is provided
+                      if (editFormData.total_hours && isValidHHMM(editFormData.total_hours)) {
+                        updatedEmp.total_hours = editFormData.total_hours
+                      } else if (editFormData.total_hours === '') {
+                        // If empty, keep existing value (convert to HH:MM if needed)
+                        updatedEmp.total_hours = getHHMM(emp)
                       }
+                      
+                      // Update hour_rate only if a valid number is provided
+                      if (editFormData.hour_rate !== '' && !isNaN(parseFloat(editFormData.hour_rate))) {
+                        updatedEmp.hour_rate = parseFloat(editFormData.hour_rate)
+                      }
+                      // If empty, keep existing hour_rate
+                      
+                      // Update salary only if a valid number is provided
+                      if (editFormData.salary !== '' && !isNaN(parseFloat(editFormData.salary))) {
+                        updatedEmp.salary = parseFloat(editFormData.salary)
+                      }
+                      // If empty, keep existing salary
+                      
+                      return updatedEmp
                     }
                     return emp
                   })
