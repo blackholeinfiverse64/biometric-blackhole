@@ -22,7 +22,11 @@ export default function Reports() {
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [hourRates, setHourRates] = useState({}) // Object with employee_id as key
   const [activeTab, setActiveTab] = useState('summary') // 'summary', 'confirmed', or 'finalized'
-  const [confirmedSalaries, setConfirmedSalaries] = useState([]) // Array of confirmed salaries
+  const [confirmedSalaries, setConfirmedSalaries] = useState(() => {
+    // Load from localStorage if available
+    const stored = localStorage.getItem('confirmedSalaries')
+    return stored ? JSON.parse(stored) : []
+  })
   const [selectedEmployees, setSelectedEmployees] = useState({}) // Object with employee_id as key for selection
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -75,6 +79,13 @@ export default function Reports() {
       }
     }
   }, [])
+
+  // Save confirmedSalaries to localStorage whenever they change
+  useEffect(() => {
+    if (confirmedSalaries.length > 0 || localStorage.getItem('confirmedSalaries')) {
+      localStorage.setItem('confirmedSalaries', JSON.stringify(confirmedSalaries))
+    }
+  }, [confirmedSalaries])
 
   if (!data) {
     return (
@@ -176,6 +187,11 @@ export default function Reports() {
     if (typeof data === 'object') {
       if (data.hours_hm) return data.hours_hm
       if (data.worked_hours) {
+        // Check if worked_hours is already in HH:MM format
+        if (typeof data.worked_hours === 'string' && data.worked_hours.includes(':')) {
+          return data.worked_hours
+        }
+        // Otherwise, treat it as decimal and convert
         const h = typeof data.worked_hours === 'string' ? parseFloat(data.worked_hours) : data.worked_hours
         const hours = Math.floor(h)
         const minutes = Math.round((h - hours) * 60)
@@ -183,6 +199,11 @@ export default function Reports() {
       }
       if (data.total_hours_hm) return data.total_hours_hm
       if (data.total_hours) {
+        // Check if total_hours is already in HH:MM format
+        if (typeof data.total_hours === 'string' && data.total_hours.includes(':')) {
+          return data.total_hours
+        }
+        // Otherwise, treat it as decimal and convert
         const h = typeof data.total_hours === 'string' ? parseFloat(data.total_hours) : data.total_hours
         const hours = Math.floor(h)
         const minutes = Math.round((h - hours) * 60)
