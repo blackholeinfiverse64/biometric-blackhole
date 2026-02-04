@@ -1363,6 +1363,55 @@ export default function Reports() {
                   </select>
                 </div>
                 {selectedFinalizedMonth && finalizedSalaries[selectedFinalizedMonth] && (
+                  <div className="flex items-center space-x-2">
+                    <select
+                      onChange={(e) => {
+                        const action = e.target.value
+                        if (!action) return
+                        
+                        const monthKey = selectedFinalizedMonth
+                        const monthData = finalizedSalaries[monthKey]
+                        
+                        if (action === 'move_to_confirmed') {
+                          // Move to confirmed salaries
+                          setMonthToDelete(monthKey)
+                          setShowDeleteFinalizedModal(true)
+                        } else if (action === 'delete') {
+                          // Delete permanently
+                          if (confirm(`Are you sure you want to permanently delete the ${monthKey} finalized salary report? This action cannot be undone.`)) {
+                            const updatedFinalized = { ...finalizedSalaries }
+                            delete updatedFinalized[monthKey]
+                            setFinalizedSalaries(updatedFinalized)
+                            localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                            
+                            // Remove from expanded state
+                            const newExpanded = { ...expandedBuckets }
+                            delete newExpanded[monthKey]
+                            setExpandedBuckets(newExpanded)
+                            localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
+                            
+                            // Clear selected month if it was the deleted one
+                            if (selectedFinalizedMonth === monthKey) {
+                              setSelectedFinalizedMonth('')
+                            }
+                            
+                            alert(`Successfully deleted ${monthKey} finalized salary report.`)
+                          }
+                        }
+                        
+                        // Reset select to default
+                        e.target.value = ''
+                      }}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-sm bg-white"
+                      defaultValue=""
+                    >
+                      <option value="">Select Action</option>
+                      <option value="move_to_confirmed">Move to Confirmed Salaries</option>
+                      <option value="delete">Delete Permanently</option>
+                    </select>
+                  </div>
+                )}
+                {selectedFinalizedMonth && finalizedSalaries[selectedFinalizedMonth] && (
                   <button
                     onClick={async () => {
                       try {
