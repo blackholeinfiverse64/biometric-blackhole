@@ -107,6 +107,16 @@ export default function Reports() {
   // Merge manual users with monthly_summary
   const monthly_summary = [...originalMonthlySummary, ...manualUsers]
 
+  // Helper function to check if an employee is finalized
+  const isEmployeeFinalized = (employeeId) => {
+    // Check all finalized salary months for this employee
+    return Object.values(finalizedSalaries).some(monthData => 
+      monthData.employees && monthData.employees.some(emp => 
+        String(emp.employee_id) === String(employeeId)
+      )
+    )
+  }
+
   // ========== HH:MM Format Helper Functions ==========
   
   // Convert HH:MM to total minutes (for calculations)
@@ -498,7 +508,9 @@ export default function Reports() {
                       if (e.key === 'Enter') {
                         const rate = parseFloat(e.target.value) || 0
                         if (rate > 0) {
-                          const selectedIds = Object.keys(selectedEmployees).filter(id => selectedEmployees[id])
+                          const selectedIds = Object.keys(selectedEmployees).filter(id => 
+                            selectedEmployees[id] && !isEmployeeFinalized(id)
+                          )
                           const updatedRates = { ...hourRates }
                           selectedIds.forEach(id => {
                             updatedRates[id] = rate
@@ -515,7 +527,9 @@ export default function Reports() {
                     const rateInput = document.querySelector('input[placeholder="Set rate for all"]')
                     const rate = parseFloat(rateInput?.value) || 0
                     if (rate > 0) {
-                      const selectedIds = Object.keys(selectedEmployees).filter(id => selectedEmployees[id])
+                      const selectedIds = Object.keys(selectedEmployees).filter(id => 
+                        selectedEmployees[id] && !isEmployeeFinalized(id)
+                      )
                       const updatedRates = { ...hourRates }
                       selectedIds.forEach(id => {
                         updatedRates[id] = rate
@@ -539,11 +553,15 @@ export default function Reports() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <input
                     type="checkbox"
-                    checked={monthly_summary.length > 0 && monthly_summary.every(emp => selectedEmployees[emp.employee_id])}
+                    checked={monthly_summary.filter(emp => !isEmployeeFinalized(emp.employee_id)).length > 0 && 
+                             monthly_summary.filter(emp => !isEmployeeFinalized(emp.employee_id)).every(emp => selectedEmployees[emp.employee_id])}
                     onChange={(e) => {
-                      const newSelection = {}
+                      const newSelection = { ...selectedEmployees }
                       monthly_summary.forEach(emp => {
-                        newSelection[emp.employee_id] = e.target.checked
+                        // Only select non-finalized employees
+                        if (!isEmployeeFinalized(emp.employee_id)) {
+                          newSelection[emp.employee_id] = e.target.checked
+                        }
                       })
                       setSelectedEmployees(newSelection)
                     }}
@@ -582,39 +600,54 @@ export default function Reports() {
                 const salary = totalHoursDecimal * rate
                 const hasRate = rate > 0
                 const hasSalary = salary > 0
+                const isFinalized = isEmployeeFinalized(emp.employee_id)
                 return (
-                  <tr key={emp.employee_id} className={`hover:bg-gray-50 ${selectedEmployees[emp.employee_id] ? 'bg-blue-50' : ''}`}>
+                  <tr 
+                    key={emp.employee_id} 
+                    className={`${isFinalized ? 'opacity-50 bg-gray-100' : 'hover:bg-gray-50'} ${selectedEmployees[emp.employee_id] && !isFinalized ? 'bg-blue-50' : ''}`}
+                  >
                     <td className="px-4 py-4 whitespace-nowrap">
                       <input
                         type="checkbox"
                         checked={selectedEmployees[emp.employee_id] || false}
                         onChange={(e) => {
-                          setSelectedEmployees({
-                            ...selectedEmployees,
-                            [emp.employee_id]: e.target.checked
-                          })
+                          if (!isFinalized) {
+                            setSelectedEmployees({
+                              ...selectedEmployees,
+                              [emp.employee_id]: e.target.checked
+                            })
+                          }
                         }}
-                        className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                        disabled={isFinalized}
+                        className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </td>
                     <td 
-                      className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 cursor-pointer hover:bg-primary-50"
+                      className={`px-4 py-4 whitespace-nowrap text-sm font-medium ${isFinalized ? 'text-gray-500 cursor-not-allowed' : 'text-gray-900 cursor-pointer hover:bg-primary-50'}`}
                       onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        console.log('Opening calendar for user:', emp)
-                        console.log('Data available:', !!data)
-                        console.log('Daily report available:', !!data?.daily_report)
-                        setSelectedUserForCalendar(emp)
-                        setShowUserCalendar(true)
+                        if (!isFinalized) {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          console.log('Opening calendar for user:', emp)
+                          console.log('Data available:', !!data)
+                          console.log('Daily report available:', !!data?.daily_report)
+                          setSelectedUserForCalendar(emp)
+                          setShowUserCalendar(true)
+                        }
                       }}
-                      title="Click to view date-wise attendance calendar"
+                      title={isFinalized ? "This employee's salary has been finalized" : "Click to view date-wise attendance calendar"}
                     >
                       <div className="flex items-center space-x-2">
-                        <Calendar className="w-4 h-4 text-primary-600" />
-                        <span className="text-primary-600 hover:text-primary-800 hover:underline font-semibold">
-                      {emp.employee_name}
+                        {!isFinalized && <Calendar className="w-4 h-4 text-primary-600" />}
+                        {isFinalized && <CheckCircle className="w-4 h-4 text-green-600" />}
+                        <span className={`${isFinalized ? 'text-gray-500 line-through' : 'text-primary-600 hover:text-primary-800 hover:underline'} font-semibold`}>
+                          {emp.employee_name}
                         </span>
+                        {isFinalized && (
+                          <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                            Done
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
@@ -624,15 +657,18 @@ export default function Reports() {
                           type="number"
                           value={hourRates[emp.employee_id] || ''}
                           onChange={(e) => {
-                            setHourRates({
-                              ...hourRates,
-                              [emp.employee_id]: e.target.value
-                            })
+                            if (!isFinalized) {
+                              setHourRates({
+                                ...hourRates,
+                                [emp.employee_id]: e.target.value
+                              })
+                            }
                           }}
+                          disabled={isFinalized}
                           placeholder="Rate"
                           min="0"
                           step="0.01"
-                          className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                          className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100"
                         />
                       </div>
                     </td>
@@ -650,7 +686,12 @@ export default function Reports() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
-                      {hasRate && hasSalary ? (
+                      {isFinalized ? (
+                        <span className="text-green-600 text-xs font-semibold flex items-center space-x-1">
+                          <CheckCircle className="w-4 h-4" />
+                          <span>Finalized</span>
+                        </span>
+                      ) : hasRate && hasSalary ? (
                         <button
                           onClick={() => {
                             const confirmedSalary = {
