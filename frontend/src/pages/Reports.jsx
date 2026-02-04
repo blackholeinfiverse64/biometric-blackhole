@@ -989,18 +989,12 @@ export default function Reports() {
                         ? `Added ${confirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
                         : `Successfully created new ${monthKey} container with ${confirmedSalaries.length} employees`
                       
-                      // Clear all report data after finalizing
+                      // Clear confirmed salaries after finalizing (they're now in finalized)
                       setConfirmedSalaries([])
-                      setData(null)
-                      setHourRates({})
-                      setSelectedEmployees({})
-                      setSelectedEmployee(null)
+                      // Keep data and other state so user can still view monthly summary
+                      // Only clear confirmed salaries since they've been finalized
                       
-                      // Clear processed data from localStorage
-                      localStorage.removeItem('processedReportData')
-                      localStorage.removeItem('hourRates')
-                      
-                      alert(`${actionMessage}. All report data has been cleared.`)
+                      alert(`${actionMessage}`)
                       
                       // Switch to monthly summary tab after finalizing
                       setActiveTab('summary')
