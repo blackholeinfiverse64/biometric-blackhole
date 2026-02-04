@@ -2282,8 +2282,8 @@ export default function Reports() {
                               const minutes = parseInt(parts[1], 10) || 0
                               setEditDayForm({
                                 status: attendanceData?.status || '',
-                                hours: hours || '',
-                                minutes: minutes || '',
+                                hours: hours, // Keep 0 as 0, not empty string
+                                minutes: minutes, // Keep 0 as 0, not empty string
                                 date: getDateKey(date)
                               })
                               setShowEditDayModal(true)
@@ -2450,12 +2450,19 @@ export default function Reports() {
                     <label className="block text-xs text-gray-600 mb-1">Hours</label>
                     <input
                       type="number"
-                      value={editDayForm.hours}
+                      value={editDayForm.hours === '' ? '' : editDayForm.hours}
                       onChange={(e) => {
-                        let value = parseInt(e.target.value, 10) || 0
+                        const inputValue = e.target.value
+                        // Allow empty string for 0
+                        if (inputValue === '') {
+                          setEditDayForm({ ...editDayForm, hours: '' })
+                          return
+                        }
+                        let value = parseInt(inputValue, 10)
+                        if (isNaN(value)) value = 0
                         if (value < 0) value = 0
                         if (value > 24) value = 24
-                        setEditDayForm({ ...editDayForm, hours: value === 0 ? '' : value })
+                        setEditDayForm({ ...editDayForm, hours: value })
                       }}
                       min="0"
                       max="24"
@@ -2470,12 +2477,19 @@ export default function Reports() {
                     <label className="block text-xs text-gray-600 mb-1">Minutes</label>
                     <input
                       type="number"
-                      value={editDayForm.minutes}
+                      value={editDayForm.minutes === '' ? '' : editDayForm.minutes}
                       onChange={(e) => {
-                        let value = parseInt(e.target.value, 10) || 0
+                        const inputValue = e.target.value
+                        // Allow empty string for 0
+                        if (inputValue === '') {
+                          setEditDayForm({ ...editDayForm, minutes: '' })
+                          return
+                        }
+                        let value = parseInt(inputValue, 10)
+                        if (isNaN(value)) value = 0
                         if (value < 0) value = 0
                         if (value >= 60) value = 59
-                        setEditDayForm({ ...editDayForm, minutes: value === 0 ? '' : value })
+                        setEditDayForm({ ...editDayForm, minutes: value })
                       }}
                       min="0"
                       max="59"
@@ -2502,14 +2516,15 @@ export default function Reports() {
                 </button>
                 <button
                   onClick={() => {
-                    if (!editDayForm.status || (editDayForm.hours === '' && editDayForm.minutes === '')) {
-                      alert('Please fill in Status and at least Hours or Minutes')
+                    if (!editDayForm.status) {
+                      alert('Please fill in Status')
                       return
                     }
 
-                    // Convert hours and minutes to decimal hours
-                    const hoursValue = parseInt(editDayForm.hours, 10) || 0
-                    const minutesValue = parseInt(editDayForm.minutes, 10) || 0
+                    // Convert hours and minutes to numbers (allow 0)
+                    // Empty string means 0, so we can save 0:00
+                    const hoursValue = editDayForm.hours === '' ? 0 : (parseInt(editDayForm.hours, 10) || 0)
+                    const minutesValue = editDayForm.minutes === '' ? 0 : (parseInt(editDayForm.minutes, 10) || 0)
                     
                     // Validate minutes (should be 0-59)
                     if (minutesValue < 0 || minutesValue >= 60) {
