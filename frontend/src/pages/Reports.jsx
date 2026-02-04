@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import config from '../config'
 import {
   BarChart,
@@ -69,6 +69,7 @@ export default function Reports() {
   const [showEditDayModal, setShowEditDayModal] = useState(false)
   const [selectedDayForEdit, setSelectedDayForEdit] = useState(null)
   const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', minutes: '', date: '' })
+  const [searchQuery, setSearchQuery] = useState('') // Search query for monthly summary
 
   useEffect(() => {
     const stored = localStorage.getItem('lastProcessResult')
@@ -106,6 +107,16 @@ export default function Reports() {
   
   // Merge manual users with monthly_summary
   const monthly_summary = [...originalMonthlySummary, ...manualUsers]
+
+  // Filter monthly summary based on search query
+  const filteredMonthlySummary = searchQuery.trim() === '' 
+    ? monthly_summary 
+    : monthly_summary.filter(emp => {
+        const query = searchQuery.toLowerCase().trim()
+        const name = (emp.employee_name || '').toLowerCase()
+        const id = String(emp.employee_id || '').toLowerCase()
+        return name.includes(query) || id.includes(query)
+      })
 
   // Helper function to check if an employee is finalized
   const isEmployeeFinalized = (employeeId) => {
@@ -473,6 +484,27 @@ export default function Reports() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Monthly Summary</h3>
+          <div className="flex items-center space-x-3">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name or ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 w-64 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  title="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           <button
             onClick={() => {
               setManualUserForm({
@@ -592,7 +624,14 @@ export default function Reports() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {monthly_summary.map((emp) => {
+              {filteredMonthlySummary.length === 0 ? (
+                <tr>
+                  <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
+                    {searchQuery ? `No employees found matching "${searchQuery}"` : 'No employees found'}
+                  </td>
+                </tr>
+              ) : (
+                filteredMonthlySummary.map((emp) => {
                 const rate = parseFloat(hourRates[emp.employee_id]) || 0
                 // Convert HH:MM to decimal hours for salary calculation
                 const totalHoursHHMM = getHHMM(emp)
@@ -767,7 +806,8 @@ export default function Reports() {
                     </td>
                   </tr>
                 )
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
