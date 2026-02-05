@@ -1,4 +1,4 @@
-# 🚀 AttendancePro - Complete Setup Guide
+# 🚀 Blackhole Infiverse - Complete Setup Guide
 
 ## Prerequisites
 
@@ -199,5 +199,5 @@ gunicorn -w 4 -b 0.0.0.0:5000 api:app
 3. ✅ Customize styling (optional)
 4. ✅ Deploy to production (optional)
 
-Enjoy using AttendancePro! 🎉
+Enjoy using Blackhole Infiverse! 🎉
 

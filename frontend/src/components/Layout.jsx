@@ -32,7 +32,7 @@ export default function Layout({ children }) {
                 <Zap className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">AttendancePro</h1>
+                <h1 className="text-xl font-bold text-gray-900">Blackhole Infiverse</h1>
                 <p className="text-xs text-gray-500">Professional Attendance Processing</p>
               </div>
             </div>
@@ -87,7 +87,7 @@ export default function Layout({ children }) {
       <footer className="bg-white border-t border-gray-200 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <p className="text-center text-gray-500 text-sm">
-            © 2024 AttendancePro. Built with precision for HR professionals.
+            © 2024 Blackhole Infiverse. Built with precision for HR professionals.
           </p>
         </div>
       </footer>

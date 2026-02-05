@@ -1,4 +1,4 @@
-# AttendancePro - Professional React Frontend
+# Blackhole Infiverse - Professional React Frontend
 
 A modern, professional SaaS-style React frontend for the Attendance Processing System.
 

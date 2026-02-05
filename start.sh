@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting AttendancePro Application..."
+echo "Starting Blackhole Infiverse Application..."
 echo ""
 
 # Check if Python is installed
