@@ -294,24 +294,47 @@ export const saveLastProcessResult = async (reportData) => {
   const year = reportData.year || new Date().getFullYear()
   const month = reportData.month || new Date().getMonth() + 1
 
-  const { data, error } = await supabase
-    .from('attendance_reports')
-    .upsert({
-      user_id: userId,
-      year: year,
-      month: month,
-      daily_report: reportData.daily_report || [],
-      monthly_summary: reportData.monthly_summary || [],
-      statistics: reportData.statistics || {},
-      updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'user_id,year,month'
-    })
-    .select()
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('attendance_reports')
+      .upsert({
+        user_id: userId,
+        year: year,
+        month: month,
+        daily_report: reportData.daily_report || [],
+        monthly_summary: reportData.monthly_summary || [],
+        statistics: reportData.statistics || {},
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id,year,month'
+      })
+      .select()
+      .single()
 
-  if (error) throw error
-  return data
+    if (error) {
+      // If table doesn't exist (406 error), save to user-specific localStorage
+      if (error.status === 406 || error.code === '42P01') {
+        console.warn('Supabase table not available, using localStorage fallback')
+        const userKey = `lastProcessResult_${userId}`
+        localStorage.setItem(userKey, JSON.stringify(reportData))
+        return null
+      }
+      throw error
+    }
+    
+    // Clear user-specific localStorage after successful Supabase save
+    const userKey = `lastProcessResult_${userId}`
+    localStorage.removeItem(userKey)
+    localStorage.removeItem('lastProcessResult') // Also clear old global key
+    
+    return data
+  } catch (error) {
+    // Fallback to user-specific localStorage
+    console.error('Error saving to Supabase, using localStorage:', error)
+    const userKey = `lastProcessResult_${userId}`
+    localStorage.setItem(userKey, JSON.stringify(reportData))
+    return null
+  }
 }
 
 export const getLastProcessResult = async () => {

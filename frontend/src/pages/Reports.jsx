@@ -101,9 +101,21 @@ export default function Reports() {
             setSelectedEmployee(lastResult.monthly_summary[0])
           }
         } else {
-          // Fallback: Try loading from localStorage if Supabase has no data
+          // Fallback: Try loading from user-specific localStorage if Supabase has no data
           try {
-            const stored = localStorage.getItem('lastProcessResult')
+            let stored = null
+            if (user) {
+              // Try user-specific key first
+              const userKey = `lastProcessResult_${user.id}`
+              stored = localStorage.getItem(userKey)
+              // If not found, try old global key (for migration)
+              if (!stored) {
+                stored = localStorage.getItem('lastProcessResult')
+              }
+            } else {
+              stored = localStorage.getItem('lastProcessResult')
+            }
+            
             if (stored) {
               const parsed = JSON.parse(stored)
               setData(parsed)
@@ -128,9 +140,21 @@ export default function Reports() {
         }
       } catch (error) {
         console.error('Error loading data from Supabase:', error)
-        // Fallback to localStorage for migration
+        // Fallback to user-specific localStorage for migration
         try {
-          const stored = localStorage.getItem('lastProcessResult')
+          let stored = null
+          if (user) {
+            // Try user-specific key first
+            const userKey = `lastProcessResult_${user.id}`
+            stored = localStorage.getItem(userKey)
+            // If not found, try old global key (for migration)
+            if (!stored) {
+              stored = localStorage.getItem('lastProcessResult')
+            }
+          } else {
+            stored = localStorage.getItem('lastProcessResult')
+          }
+          
           if (stored) {
             const parsed = JSON.parse(stored)
             setData(parsed)
@@ -148,6 +172,72 @@ export default function Reports() {
 
     loadDataFromSupabase()
   }, [user])
+  
+  // Reload data when user changes (when different user logs in)
+  useEffect(() => {
+    if (user) {
+      // Clear current data when user changes
+      setData(null)
+      setConfirmedSalaries([])
+      setFinalizedSalaries({})
+      setManualUsers([])
+      setManualUserDailyRecords({})
+      setHourRates({})
+      
+      // Reload data for new user
+      const loadDataFromSupabase = async () => {
+        try {
+          const [
+            lastResult,
+            confirmed,
+            finalized,
+            manual,
+            dailyRecords,
+            rates
+          ] = await Promise.all([
+            getLastProcessResult().catch(() => null),
+            getConfirmedSalaries().catch(() => []),
+            getFinalizedSalaries().catch(() => ({})),
+            getManualUsers().catch(() => []),
+            getManualUserDailyRecords().catch(() => ({})),
+            getHourRates().catch(() => ({}))
+          ])
+
+          if (lastResult) {
+            setData(lastResult)
+            if (lastResult.monthly_summary?.length > 0) {
+              setSelectedEmployee(lastResult.monthly_summary[0])
+            }
+          } else {
+            // Try user-specific localStorage
+            try {
+              const userKey = `lastProcessResult_${user.id}`
+              const stored = localStorage.getItem(userKey) || localStorage.getItem('lastProcessResult')
+              if (stored) {
+                const parsed = JSON.parse(stored)
+                setData(parsed)
+                if (parsed.monthly_summary?.length > 0) {
+                  setSelectedEmployee(parsed.monthly_summary[0])
+                }
+              }
+            } catch (e) {
+              console.error('Error loading from localStorage:', e)
+            }
+          }
+          
+          setConfirmedSalaries(confirmed)
+          setFinalizedSalaries(finalized)
+          setManualUsers(manual)
+          setManualUserDailyRecords(dailyRecords)
+          setHourRates(rates)
+        } catch (error) {
+          console.error('Error reloading data:', error)
+        }
+      }
+      
+      loadDataFromSupabase()
+    }
+  }, [user?.id]) // Reload when user ID changes
 
   // Save confirmedSalaries to Supabase whenever they change
   useEffect(() => {

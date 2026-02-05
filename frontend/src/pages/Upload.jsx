@@ -72,16 +72,31 @@ export default function Upload() {
           }
           await saveLastProcessResult(reportData)
           console.log('✅ Saved to Supabase successfully')
+          
+          // Clear old localStorage data for this user (if exists)
+          const userKey = `lastProcessResult_${user.id}`
+          localStorage.removeItem('lastProcessResult') // Remove old global key
+          localStorage.removeItem(userKey) // Remove user-specific key
         } catch (supabaseError) {
           console.error('Error saving to Supabase:', supabaseError)
-          // Fallback to localStorage if Supabase fails
-          localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
-          console.log('⚠️ Saved to localStorage as fallback')
+          // Fallback to user-specific localStorage if Supabase fails
+          if (user) {
+            const userKey = `lastProcessResult_${user.id}`
+            localStorage.setItem(userKey, JSON.stringify(response.data))
+            console.log('⚠️ Saved to localStorage as fallback (user-specific)')
+          } else {
+            localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
+          }
         }
       } else {
         // Fallback to localStorage if not authenticated
         localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
       }
+      
+      // Automatically navigate to reports page after successful upload
+      setTimeout(() => {
+        navigate('/reports')
+      }, 1500) // Wait 1.5 seconds to show success message
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to process file. Please try again.')
       console.error('Error:', err)
