@@ -1,6 +1,21 @@
 import { useState, useEffect } from 'react'
 import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import config from '../config'
+import { useAuth } from '../contexts/AuthContext'
+import {
+  saveLastProcessResult,
+  getLastProcessResult,
+  saveConfirmedSalaries,
+  getConfirmedSalaries,
+  saveFinalizedSalaries,
+  getFinalizedSalaries,
+  saveManualUsers,
+  getManualUsers,
+  saveManualUserDailyRecords,
+  getManualUserDailyRecords,
+  saveHourRates,
+  getHourRates,
+} from '../services/supabaseService'
 import {
   BarChart,
   Bar,
@@ -18,38 +33,23 @@ import {
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export default function Reports() {
+  const { user } = useAuth()
   const [data, setData] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [hourRates, setHourRates] = useState({}) // Object with employee_id as key
   const [activeTab, setActiveTab] = useState('summary') // 'summary', 'confirmed', or 'finalized'
-  const [confirmedSalaries, setConfirmedSalaries] = useState(() => {
-    // Load from localStorage if available
-    const stored = localStorage.getItem('confirmedSalaries')
-    return stored ? JSON.parse(stored) : []
-  })
+  const [confirmedSalaries, setConfirmedSalaries] = useState([])
   const [selectedEmployees, setSelectedEmployees] = useState({}) // Object with employee_id as key for selection
   const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [selectedEmployeeForAction, setSelectedEmployeeForAction] = useState(null)
   const [editFormData, setEditFormData] = useState({ total_hours: '', hour_rate: '', salary: '' })
-  const [finalizedSalaries, setFinalizedSalaries] = useState(() => {
-    // Load from localStorage if available
-    const stored = localStorage.getItem('finalizedSalariesByMonth')
-    return stored ? JSON.parse(stored) : {}
-  })
+  const [finalizedSalaries, setFinalizedSalaries] = useState({})
   const [selectedFinalizedMonth, setSelectedFinalizedMonth] = useState('')
   const [showDeleteFinalizedModal, setShowDeleteFinalizedModal] = useState(false)
   const [monthToDelete, setMonthToDelete] = useState('')
-  const [manualUsers, setManualUsers] = useState(() => {
-    // Load from localStorage if available
-    const stored = localStorage.getItem('manualUsers')
-    return stored ? JSON.parse(stored) : []
-  })
-  const [manualUserDailyRecords, setManualUserDailyRecords] = useState(() => {
-    // Load daily records for manual users from localStorage
-    const stored = localStorage.getItem('manualUserDailyRecords')
-    return stored ? JSON.parse(stored) : {} // Object with employee_id as key, array of daily records as value
-  })
+  const [manualUsers, setManualUsers] = useState([])
+  const [manualUserDailyRecords, setManualUserDailyRecords] = useState({}) // Object with employee_id as key, array of daily records as value
   const [showAddManualUserModal, setShowAddManualUserModal] = useState(false)
   const [manualUserForm, setManualUserForm] = useState({
     employee_id: '',
@@ -59,34 +59,90 @@ export default function Reports() {
     is_manual: true // Flag to identify manual users
   })
   const [editingManualUser, setEditingManualUser] = useState(null)
-  const [expandedBuckets, setExpandedBuckets] = useState(() => {
-    // Load from localStorage if available, or default to all expanded
-    const stored = localStorage.getItem('expandedBuckets')
-    return stored ? JSON.parse(stored) : {}
-  })
+  const [expandedBuckets, setExpandedBuckets] = useState({}) // UI state - can stay in localStorage
   const [showUserCalendar, setShowUserCalendar] = useState(false)
   const [selectedUserForCalendar, setSelectedUserForCalendar] = useState(null)
   const [showEditDayModal, setShowEditDayModal] = useState(false)
   const [selectedDayForEdit, setSelectedDayForEdit] = useState(null)
   const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', minutes: '', date: '' })
   const [searchQuery, setSearchQuery] = useState('') // Search query for monthly summary
+  const [loadingData, setLoadingData] = useState(true)
 
+  // Load all data from Supabase on component mount
   useEffect(() => {
-    const stored = localStorage.getItem('lastProcessResult')
-    if (stored) {
-      setData(JSON.parse(stored))
-      if (JSON.parse(stored).monthly_summary?.length > 0) {
-        setSelectedEmployee(JSON.parse(stored).monthly_summary[0])
+    const loadDataFromSupabase = async () => {
+      if (!user) {
+        setLoadingData(false)
+        return
+      }
+
+      try {
+        // Load all data in parallel
+        const [
+          lastResult,
+          confirmed,
+          finalized,
+          manual,
+          dailyRecords,
+          rates
+        ] = await Promise.all([
+          getLastProcessResult().catch(() => null),
+          getConfirmedSalaries().catch(() => []),
+          getFinalizedSalaries().catch(() => ({})),
+          getManualUsers().catch(() => []),
+          getManualUserDailyRecords().catch(() => ({})),
+          getHourRates().catch(() => ({}))
+        ])
+
+        // Set data
+        if (lastResult) {
+          setData(lastResult)
+          if (lastResult.monthly_summary?.length > 0) {
+            setSelectedEmployee(lastResult.monthly_summary[0])
+          }
+        }
+        setConfirmedSalaries(confirmed)
+        setFinalizedSalaries(finalized)
+        setManualUsers(manual)
+        setManualUserDailyRecords(dailyRecords)
+        setHourRates(rates)
+
+        // Load expanded buckets from localStorage (UI state)
+        const storedBuckets = localStorage.getItem('expandedBuckets')
+        if (storedBuckets) {
+          setExpandedBuckets(JSON.parse(storedBuckets))
+        }
+      } catch (error) {
+        console.error('Error loading data from Supabase:', error)
+        // Fallback to localStorage for migration
+        try {
+          const stored = localStorage.getItem('lastProcessResult')
+          if (stored) {
+            const parsed = JSON.parse(stored)
+            setData(parsed)
+            if (parsed.monthly_summary?.length > 0) {
+              setSelectedEmployee(parsed.monthly_summary[0])
+            }
+          }
+        } catch (e) {
+          console.error('Error loading from localStorage fallback:', e)
+        }
+      } finally {
+        setLoadingData(false)
       }
     }
-  }, [])
 
-  // Save confirmedSalaries to localStorage whenever they change
+    loadDataFromSupabase()
+  }, [user])
+
+  // Save confirmedSalaries to Supabase whenever they change
   useEffect(() => {
-    if (confirmedSalaries.length > 0 || localStorage.getItem('confirmedSalaries')) {
-      localStorage.setItem('confirmedSalaries', JSON.stringify(confirmedSalaries))
+    if (user && confirmedSalaries.length >= 0) {
+      saveConfirmedSalaries(confirmedSalaries).catch(error => {
+        console.error('Error saving confirmed salaries:', error)
+      })
     }
-  }, [confirmedSalaries])
+  }, [confirmedSalaries, user])
 
   if (!data) {
     return (
@@ -772,7 +828,9 @@ export default function Reports() {
                                   u => u.employee_id !== emp.employee_id
                                 )
                                 setManualUsers(updatedManualUsers)
-                                localStorage.setItem('manualUsers', JSON.stringify(updatedManualUsers))
+                                saveManualUsers(updatedManualUsers).catch(error => {
+                                  console.error('Error saving manual users:', error)
+                                })
                                 
                                 // Remove from confirmed salaries if exists
                                 setConfirmedSalaries(prev => 
@@ -1065,7 +1123,9 @@ export default function Reports() {
                       }
                       
                       setFinalizedSalaries(updatedFinalized)
-                      localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                      saveFinalizedSalaries(updatedFinalized).catch(error => {
+                        console.error('Error saving finalized salaries:', error)
+                      })
                       
                       const actionMessage = existingMonthData 
                         ? `Added ${confirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
@@ -1382,7 +1442,9 @@ export default function Reports() {
                             const updatedFinalized = { ...finalizedSalaries }
                             delete updatedFinalized[monthKey]
                             setFinalizedSalaries(updatedFinalized)
-                            localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                            saveFinalizedSalaries(updatedFinalized).catch(error => {
+                              console.error('Error saving finalized salaries:', error)
+                            })
                             
                             // Remove from expanded state
                             const newExpanded = { ...expandedBuckets }
@@ -1732,7 +1794,9 @@ export default function Reports() {
                               const updatedFinalized = { ...finalizedSalaries }
                               delete updatedFinalized[monthKey]
                               setFinalizedSalaries(updatedFinalized)
-                              localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                              saveFinalizedSalaries(updatedFinalized).catch(error => {
+                                console.error('Error saving finalized salaries:', error)
+                              })
                               
                               // Remove from expanded state
                               const newExpanded = { ...expandedBuckets }
@@ -1903,7 +1967,9 @@ export default function Reports() {
                   const updatedFinalized = { ...finalizedSalaries }
                   delete updatedFinalized[monthToDelete]
                   setFinalizedSalaries(updatedFinalized)
-                  localStorage.setItem('finalizedSalariesByMonth', JSON.stringify(updatedFinalized))
+                  saveFinalizedSalaries(updatedFinalized).catch(error => {
+                    console.error('Error saving finalized salaries:', error)
+                  })
                   
                   // Clear selected month if it was the deleted one
                   if (selectedFinalizedMonth === monthToDelete) {
@@ -2065,7 +2131,9 @@ export default function Reports() {
                   }
                   
                   setManualUsers(updatedUsers)
-                  localStorage.setItem('manualUsers', JSON.stringify(updatedUsers))
+                  saveManualUsers(updatedUsers).catch(error => {
+                    console.error('Error saving manual users:', error)
+                  })
                   
                   // Set hour rate if provided
                   if (manualUserForm.hour_rate) {
@@ -2648,7 +2716,9 @@ export default function Reports() {
                         [userId]: updatedRecords
                       }
                       setManualUserDailyRecords(updatedManualRecords)
-                      localStorage.setItem('manualUserDailyRecords', JSON.stringify(updatedManualRecords))
+                      saveManualUserDailyRecords(updatedManualRecords).catch(error => {
+                        console.error('Error saving manual user daily records:', error)
+                      })
 
                       // Recalculate monthly summary for this manual user
                       let totalHoursHHMM = '0:00'
@@ -2686,7 +2756,9 @@ export default function Reports() {
                       })
 
                       setManualUsers(updatedManualUsers)
-                      localStorage.setItem('manualUsers', JSON.stringify(updatedManualUsers))
+                      saveManualUsers(updatedManualUsers).catch(error => {
+                        console.error('Error saving manual users:', error)
+                      })
 
                       // Update selectedUserForCalendar to reflect new totals
                       const updatedUser = updatedManualUsers.find(u => String(u.employee_id) === userId)
@@ -2820,8 +2892,10 @@ export default function Reports() {
                       }
                       setData(updatedData)
                       
-                      // Save to localStorage
-                      localStorage.setItem('lastProcessResult', JSON.stringify(updatedData))
+                      // Save to Supabase
+                      saveLastProcessResult(updatedData).catch(error => {
+                        console.error('Error saving process result:', error)
+                      })
 
                       // Update selectedUserForCalendar to reflect new totals
                       const updatedUser = updatedMonthlySummary.find(emp => 
