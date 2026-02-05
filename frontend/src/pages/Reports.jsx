@@ -371,11 +371,19 @@ export default function Reports() {
         if (typeof data.total_hours === 'string' && data.total_hours.includes(':')) {
           return data.total_hours
         }
-        // Otherwise, treat it as decimal and convert
+        // If it's a number (decimal), convert it
+        if (typeof data.total_hours === 'number') {
+          const hours = Math.floor(data.total_hours)
+          const minutes = Math.round((data.total_hours - hours) * 60)
+          return `${hours}:${String(minutes).padStart(2, '0')}`
+        }
+        // Otherwise, treat it as decimal string and convert
         const h = typeof data.total_hours === 'string' ? parseFloat(data.total_hours) : data.total_hours
-        const hours = Math.floor(h)
-        const minutes = Math.round((h - hours) * 60)
-        return `${hours}:${String(minutes).padStart(2, '0')}`
+        if (!isNaN(h)) {
+          const hours = Math.floor(h)
+          const minutes = Math.round((h - hours) * 60)
+          return `${hours}:${String(minutes).padStart(2, '0')}`
+        }
       }
     }
     return '0:00'
@@ -1409,10 +1417,30 @@ export default function Reports() {
                     return emp
                   })
                   setConfirmedSalaries(updated)
+                  
+                  // Get the updated employee data to show in form
+                  const updatedEmployee = updated.find((emp, i) => i === selectedEmployeeForAction.index)
+                  
+                  // Update the form data with the newly updated values (keep modal open to show updated values)
+                  if (updatedEmployee) {
+                    // Ensure total_hours is saved correctly
+                    const updatedTotalHours = editFormData.total_hours && isValidHHMM(editFormData.total_hours) 
+                      ? editFormData.total_hours 
+                      : getHHMM(updatedEmployee)
+                    
+                    // Update form with the values that were just saved
+                    setEditFormData({
+                      total_hours: updatedTotalHours,
+                      hour_rate: updatedEmployee.hour_rate ? String(updatedEmployee.hour_rate) : '',
+                      salary: updatedEmployee.salary ? String(updatedEmployee.salary) : ''
+                    })
+                    // Update selectedEmployeeForAction with the updated data
+                    setSelectedEmployeeForAction({ ...updatedEmployee, index: selectedEmployeeForAction.index })
+                  }
+                  
                   alert(`Salary updated successfully for ${selectedEmployeeForAction.employee_name}!`)
-                  setShowUpdateModal(false)
-                  setSelectedEmployeeForAction(null)
-                  setEditFormData({ total_hours: '', hour_rate: '', salary: '' })
+                  
+                  // Keep modal open to show updated values - user can close manually
                 }}
                 className="btn-primary flex items-center space-x-2"
               >
