@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
@@ -12,8 +12,55 @@ export default function Auth() {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, userProfile, user } = useAuth()
   const navigate = useNavigate()
+  const [shouldRedirect, setShouldRedirect] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+
+  // Determine dashboard route based on user role or email
+  const getDashboardRoute = (profile, email) => {
+    const emailLower = (email || '').toLowerCase()
+    
+    // Priority 1: Check if profile has role
+    if (profile?.role) {
+      if (profile.role === 'admin' || profile.role === 'administrator') {
+        return '/reports' // Admin dashboard - full access
+      } else if (profile.role === 'employee' || profile.role === 'staff') {
+        return '/reports' // Employee dashboard - can be customized
+      } else if (profile.role === 'manager') {
+        return '/reports' // Manager dashboard
+      }
+    }
+    
+    // Priority 2: Route based on email domain or keywords
+    if (emailLower.includes('admin') || emailLower.includes('administrator')) {
+      return '/reports' // Admin dashboard
+    } else if (emailLower.includes('manager') || emailLower.includes('mgr')) {
+      return '/reports' // Manager dashboard
+    } else if (emailLower.includes('employee') || emailLower.includes('staff') || emailLower.includes('emp')) {
+      return '/reports' // Employee dashboard
+    }
+    
+    // Priority 3: Route based on email domain
+    const domain = emailLower.split('@')[1] || ''
+    if (domain.includes('admin') || domain.includes('management')) {
+      return '/reports' // Admin dashboard
+    }
+    
+    // Default route - can be customized per user
+    // You can add more specific routing logic here
+    return '/reports'
+  }
+
+  // Handle redirect after profile loads
+  useEffect(() => {
+    if (shouldRedirect && user && loginEmail) {
+      const route = getDashboardRoute(userProfile, loginEmail)
+      navigate(route)
+      setShouldRedirect(false)
+      setLoginEmail('')
+    }
+  }, [userProfile, user, shouldRedirect, loginEmail, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -23,18 +70,22 @@ export default function Auth() {
     try {
       if (isLogin) {
         await signIn(email, password)
+        setLoginEmail(email)
+        setShouldRedirect(true)
       } else {
         if (!fullName) {
           setError('Full name is required')
+          setLoading(false)
           return
         }
         await signUp(email, password, fullName)
+        setLoginEmail(email)
+        setShouldRedirect(true)
       }
-      navigate('/reports')
     } catch (err) {
       setError(err.message)
-    } finally {
       setLoading(false)
+      setShouldRedirect(false)
     }
   }
 

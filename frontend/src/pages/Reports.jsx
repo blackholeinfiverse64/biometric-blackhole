@@ -505,23 +505,23 @@ export default function Reports() {
                 </button>
               )}
             </div>
-            <button
-              onClick={() => {
-                setManualUserForm({
-                  employee_id: '',
-                  employee_name: '',
-                  total_hours: '',
-                  hour_rate: '',
-                  is_manual: true
-                })
-                setEditingManualUser(null)
-                setShowAddManualUserModal(true)
-              }}
-              className="btn-primary flex items-center space-x-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Manual User</span>
-            </button>
+          <button
+            onClick={() => {
+              setManualUserForm({
+                employee_id: '',
+                employee_name: '',
+                total_hours: '',
+                hour_rate: '',
+                is_manual: true
+              })
+              setEditingManualUser(null)
+              setShowAddManualUserModal(true)
+            }}
+            className="btn-primary flex items-center space-x-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Manual User</span>
+          </button>
           </div>
           {Object.keys(selectedEmployees).filter(id => selectedEmployees[id]).length > 0 && (
             <div className="flex items-center space-x-3">
@@ -593,7 +593,7 @@ export default function Reports() {
                       monthly_summary.forEach(emp => {
                         // Only select non-finalized employees
                         if (!isEmployeeFinalized(emp.employee_id)) {
-                          newSelection[emp.employee_id] = e.target.checked
+                        newSelection[emp.employee_id] = e.target.checked
                         }
                       })
                       setSelectedEmployees(newSelection)
@@ -652,10 +652,10 @@ export default function Reports() {
                         checked={selectedEmployees[emp.employee_id] || false}
                         onChange={(e) => {
                           if (!isFinalized) {
-                            setSelectedEmployees({
-                              ...selectedEmployees,
-                              [emp.employee_id]: e.target.checked
-                            })
+                          setSelectedEmployees({
+                            ...selectedEmployees,
+                            [emp.employee_id]: e.target.checked
+                          })
                           }
                         }}
                         disabled={isFinalized}
@@ -681,7 +681,7 @@ export default function Reports() {
                         {!isFinalized && <Calendar className="w-4 h-4 text-primary-600" />}
                         {isFinalized && <CheckCircle className="w-4 h-4 text-green-600" />}
                         <span className={`${isFinalized ? 'text-gray-500 line-through' : 'text-primary-600 hover:text-primary-800 hover:underline'} font-semibold`}>
-                          {emp.employee_name}
+                      {emp.employee_name}
                         </span>
                         {isFinalized && (
                           <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-0.5 rounded-full">
@@ -698,10 +698,10 @@ export default function Reports() {
                           value={hourRates[emp.employee_id] || ''}
                           onChange={(e) => {
                             if (!isFinalized) {
-                              setHourRates({
-                                ...hourRates,
-                                [emp.employee_id]: e.target.value
-                              })
+                            setHourRates({
+                              ...hourRates,
+                              [emp.employee_id]: e.target.value
+                            })
                             }
                           }}
                           disabled={isFinalized}
@@ -1337,7 +1337,7 @@ export default function Reports() {
                 <ChevronDown className="w-4 h-4 rotate-90" />
                 <span>Back to Reports</span>
               </button>
-              <h3 className="text-lg font-semibold text-gray-900">Finalized Salaries by Month</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Finalized Salaries by Month</h3>
             </div>
             {Object.keys(finalizedSalaries).length > 0 && (
               <div className="flex items-center space-x-3">
