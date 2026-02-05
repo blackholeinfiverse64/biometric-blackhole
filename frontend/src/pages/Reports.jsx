@@ -48,6 +48,7 @@ export default function Reports() {
   const [selectedFinalizedMonth, setSelectedFinalizedMonth] = useState('')
   const [showDeleteFinalizedModal, setShowDeleteFinalizedModal] = useState(false)
   const [monthToDelete, setMonthToDelete] = useState('')
+  const [selectedFinalizedEmployees, setSelectedFinalizedEmployees] = useState({}) // Object: { monthKey: Set of employee_ids }
   const [manualUsers, setManualUsers] = useState([])
   const [manualUserDailyRecords, setManualUserDailyRecords] = useState({}) // Object with employee_id as key, array of daily records as value
   const [showAddManualUserModal, setShowAddManualUserModal] = useState(false)
@@ -92,6 +93,7 @@ export default function Reports() {
       setManualUserDailyRecords({})
       setHourRates({})
       setSelectedEmployee(null)
+      setSelectedFinalizedEmployees({})
 
       try {
         // Load all data in parallel - all queries are user-specific via Supabase service
@@ -203,6 +205,7 @@ export default function Reports() {
       setManualUserDailyRecords({})
       setHourRates({})
       setSelectedEmployee(null)
+      setSelectedFinalizedEmployees({})
       setPreviousUserId(null)
       return
     }
@@ -217,6 +220,7 @@ export default function Reports() {
       setManualUserDailyRecords({})
       setHourRates({})
       setSelectedEmployee(null)
+      setSelectedFinalizedEmployees({})
     }
     
     setPreviousUserId(user.id)
@@ -1874,41 +1878,223 @@ export default function Reports() {
                     <div className="p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h5 className="text-md font-semibold text-gray-700">Employee Details</h5>
-                        <button
-                          onClick={() => {
-                            // Delete permanently - different from "Move to Confirmed"
-                            if (confirm(`Are you sure you want to permanently delete the ${monthKey} finalized salary report? This action cannot be undone.`)) {
-                              const updatedFinalized = { ...finalizedSalaries }
-                              delete updatedFinalized[monthKey]
-                              setFinalizedSalaries(updatedFinalized)
-                              saveFinalizedSalaries(updatedFinalized).catch(error => {
-                                console.error('Error saving finalized salaries:', error)
-                              })
-                              
-                              // Remove from expanded state
-                              const newExpanded = { ...expandedBuckets }
-                              delete newExpanded[monthKey]
-                              setExpandedBuckets(newExpanded)
-                              localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
-                              
-                              if (selectedFinalizedMonth === monthKey) {
-                                setSelectedFinalizedMonth('')
-                              }
-                              
-                              alert(`Successfully deleted ${monthKey} finalized salary report.`)
-                            }
-                          }}
-                          className="btn-danger flex items-center space-x-2 px-3 py-2 text-sm bg-red-600 hover:bg-red-700"
-                          title="Permanently delete this finalized salary report"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Delete</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {/* Get selected employees for this month */}
+                          {(() => {
+                            const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
+                            const hasSelection = selectedForMonth.size > 0
+                            
+                            return (
+                              <>
+                                {hasSelection && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        if (selectedForMonth.size === 0) {
+                                          alert('Please select employees to move')
+                                          return
+                                        }
+                                        
+                                        // Get selected employees
+                                        const selectedEmps = monthData.employees.filter(emp => 
+                                          selectedForMonth.has(String(emp.employee_id))
+                                        )
+                                        
+                                        if (selectedEmps.length === 0) {
+                                          alert('No employees selected')
+                                          return
+                                        }
+                                        
+                                        // Move selected employees back to confirmed salaries
+                                        setConfirmedSalaries(prev => {
+                                          const existingIds = prev.map(s => s.employee_id)
+                                          const newSalaries = selectedEmps.filter(emp => !existingIds.includes(emp.employee_id))
+                                          return [...prev, ...newSalaries]
+                                        })
+                                        
+                                        // Remove selected employees from finalized salaries
+                                        const updatedEmployees = monthData.employees.filter(emp => 
+                                          !selectedForMonth.has(String(emp.employee_id))
+                                        )
+                                        
+                                        // Recalculate total salary
+                                        const newTotalSalary = updatedEmployees.reduce((sum, emp) => {
+                                          return sum + parseFloat(emp.salary || 0)
+                                        }, 0)
+                                        
+                                        const updatedFinalized = {
+                                          ...finalizedSalaries,
+                                          [monthKey]: {
+                                            ...monthData,
+                                            employees: updatedEmployees,
+                                            total_salary: newTotalSalary
+                                          }
+                                        }
+                                        
+                                        // If no employees left, remove the month
+                                        if (updatedEmployees.length === 0) {
+                                          delete updatedFinalized[monthKey]
+                                          const newExpanded = { ...expandedBuckets }
+                                          delete newExpanded[monthKey]
+                                          setExpandedBuckets(newExpanded)
+                                          localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
+                                          if (selectedFinalizedMonth === monthKey) {
+                                            setSelectedFinalizedMonth('')
+                                          }
+                                        }
+                                        
+                                        setFinalizedSalaries(updatedFinalized)
+                                        saveFinalizedSalaries(updatedFinalized).catch(error => {
+                                          console.error('Error saving finalized salaries:', error)
+                                        })
+                                        
+                                        // Clear selection for this month
+                                        const updatedSelection = { ...selectedFinalizedEmployees }
+                                        delete updatedSelection[monthKey]
+                                        setSelectedFinalizedEmployees(updatedSelection)
+                                        
+                                        alert(`Successfully moved ${selectedEmps.length} employee(s) back to Confirmed Salaries.`)
+                                        setActiveTab('confirmed')
+                                      }}
+                                      className="btn-primary flex items-center space-x-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700"
+                                      title="Move selected employees back to Confirmed Salaries"
+                                    >
+                                      <CheckCircle className="w-4 h-4" />
+                                      <span>Move to Confirmed ({selectedForMonth.size})</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (selectedForMonth.size === 0) {
+                                          alert('Please select employees to delete')
+                                          return
+                                        }
+                                        
+                                        if (!confirm(`Are you sure you want to permanently delete ${selectedForMonth.size} selected employee(s) from ${monthKey}? This action cannot be undone.`)) {
+                                          return
+                                        }
+                                        
+                                        // Remove selected employees from finalized salaries
+                                        const updatedEmployees = monthData.employees.filter(emp => 
+                                          !selectedForMonth.has(String(emp.employee_id))
+                                        )
+                                        
+                                        // Recalculate total salary
+                                        const newTotalSalary = updatedEmployees.reduce((sum, emp) => {
+                                          return sum + parseFloat(emp.salary || 0)
+                                        }, 0)
+                                        
+                                        const updatedFinalized = {
+                                          ...finalizedSalaries,
+                                          [monthKey]: {
+                                            ...monthData,
+                                            employees: updatedEmployees,
+                                            total_salary: newTotalSalary
+                                          }
+                                        }
+                                        
+                                        // If no employees left, remove the month
+                                        if (updatedEmployees.length === 0) {
+                                          delete updatedFinalized[monthKey]
+                                          const newExpanded = { ...expandedBuckets }
+                                          delete newExpanded[monthKey]
+                                          setExpandedBuckets(newExpanded)
+                                          localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
+                                          if (selectedFinalizedMonth === monthKey) {
+                                            setSelectedFinalizedMonth('')
+                                          }
+                                        }
+                                        
+                                        setFinalizedSalaries(updatedFinalized)
+                                        saveFinalizedSalaries(updatedFinalized).catch(error => {
+                                          console.error('Error saving finalized salaries:', error)
+                                        })
+                                        
+                                        // Clear selection for this month
+                                        const updatedSelection = { ...selectedFinalizedEmployees }
+                                        delete updatedSelection[monthKey]
+                                        setSelectedFinalizedEmployees(updatedSelection)
+                                        
+                                        alert(`Successfully deleted ${selectedForMonth.size} employee(s) from ${monthKey}.`)
+                                      }}
+                                      className="btn-danger flex items-center space-x-2 px-3 py-2 text-sm bg-red-600 hover:bg-red-700"
+                                      title="Permanently delete selected employees"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      <span>Delete ({selectedForMonth.size})</span>
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    // Delete entire month permanently
+                                    if (confirm(`Are you sure you want to permanently delete the ${monthKey} finalized salary report? This action cannot be undone.`)) {
+                                      const updatedFinalized = { ...finalizedSalaries }
+                                      delete updatedFinalized[monthKey]
+                                      setFinalizedSalaries(updatedFinalized)
+                                      saveFinalizedSalaries(updatedFinalized).catch(error => {
+                                        console.error('Error saving finalized salaries:', error)
+                                      })
+                                      
+                                      // Remove from expanded state
+                                      const newExpanded = { ...expandedBuckets }
+                                      delete newExpanded[monthKey]
+                                      setExpandedBuckets(newExpanded)
+                                      localStorage.setItem('expandedBuckets', JSON.stringify(newExpanded))
+                                      
+                                      // Clear selection
+                                      const updatedSelection = { ...selectedFinalizedEmployees }
+                                      delete updatedSelection[monthKey]
+                                      setSelectedFinalizedEmployees(updatedSelection)
+                                      
+                                      if (selectedFinalizedMonth === monthKey) {
+                                        setSelectedFinalizedMonth('')
+                                      }
+                                      
+                                      alert(`Successfully deleted ${monthKey} finalized salary report.`)
+                                    }
+                                  }}
+                                  className="btn-danger flex items-center space-x-2 px-3 py-2 text-sm bg-red-600 hover:bg-red-700"
+                                  title="Permanently delete this entire finalized salary report"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span>Delete All</span>
+                                </button>
+                              </>
+                            )
+                          })()}
+                        </div>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead>
                             <tr className="bg-gradient-to-r from-gray-50 to-gray-100">
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-12">
+                                <input
+                                  type="checkbox"
+                                  checked={(() => {
+                                    const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
+                                    return monthData.employees.length > 0 && 
+                                           selectedForMonth.size === monthData.employees.length
+                                  })()}
+                                  onChange={(e) => {
+                                    const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
+                                    const updatedSelection = { ...selectedFinalizedEmployees }
+                                    
+                                    if (e.target.checked) {
+                                      // Select all
+                                      const allIds = new Set(monthData.employees.map(emp => String(emp.employee_id)))
+                                      updatedSelection[monthKey] = allIds
+                                    } else {
+                                      // Deselect all
+                                      updatedSelection[monthKey] = new Set()
+                                    }
+                                    
+                                    setSelectedFinalizedEmployees(updatedSelection)
+                                  }}
+                                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </th>
                               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Employee ID
                               </th>
@@ -1927,13 +2113,40 @@ export default function Reports() {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-100">
-                            {monthData.employees.map((emp, index) => (
+                            {monthData.employees.map((emp, index) => {
+                              const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
+                              const isSelected = selectedForMonth.has(String(emp.employee_id))
+                              
+                              return (
                               <tr 
                                 key={emp.employee_id} 
                                 className={`hover:bg-gray-50 transition-colors duration-150 ${
+                                  isSelected ? 'bg-blue-50 border-l-4 border-blue-500' : 
                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                                 }`}
                               >
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
+                                      const updatedSelection = { ...selectedFinalizedEmployees }
+                                      const updatedSet = new Set(selectedForMonth)
+                                      
+                                      if (e.target.checked) {
+                                        updatedSet.add(String(emp.employee_id))
+                                      } else {
+                                        updatedSet.delete(String(emp.employee_id))
+                                      }
+                                      
+                                      updatedSelection[monthKey] = updatedSet
+                                      setSelectedFinalizedEmployees(updatedSelection)
+                                    }}
+                                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   <span className="text-sm font-semibold text-gray-900 bg-gray-100 px-2 py-1 rounded">
                                     {emp.employee_id}
@@ -1958,11 +2171,12 @@ export default function Reports() {
                                   </span>
                                 </td>
                               </tr>
-                            ))}
+                            )
+                            })}
                           </tbody>
                           <tfoot>
                             <tr className="bg-gradient-to-r from-green-50 to-green-100 border-t-2 border-green-200">
-                              <td colSpan="4" className="px-6 py-4 text-right">
+                              <td colSpan="5" className="px-6 py-4 text-right">
                                 <span className="text-base font-bold text-gray-900">Grand Total Salary:</span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
