@@ -100,6 +100,20 @@ export default function Reports() {
           if (lastResult.monthly_summary?.length > 0) {
             setSelectedEmployee(lastResult.monthly_summary[0])
           }
+        } else {
+          // Fallback: Try loading from localStorage if Supabase has no data
+          try {
+            const stored = localStorage.getItem('lastProcessResult')
+            if (stored) {
+              const parsed = JSON.parse(stored)
+              setData(parsed)
+              if (parsed.monthly_summary?.length > 0) {
+                setSelectedEmployee(parsed.monthly_summary[0])
+              }
+            }
+          } catch (e) {
+            console.error('Error loading from localStorage fallback:', e)
+          }
         }
         setConfirmedSalaries(confirmed)
         setFinalizedSalaries(finalized)

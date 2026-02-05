@@ -318,27 +318,41 @@ export const getLastProcessResult = async () => {
   const userId = await getUserId()
   if (!userId) throw new Error('User not authenticated')
 
-  // Get the most recent attendance report
-  const { data, error } = await supabase
-    .from('attendance_reports')
-    .select('*')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
+  try {
+    // Get the most recent attendance report
+    const { data, error } = await supabase
+      .from('attendance_reports')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle() // Use maybeSingle instead of single to avoid error if no rows
 
-  if (error && error.code !== 'PGRST116') throw error
-  
-  if (data) {
-    return {
-      daily_report: data.daily_report,
-      monthly_summary: data.monthly_summary,
-      statistics: data.statistics,
-      year: data.year,
-      month: data.month,
+    // If table doesn't exist or RLS blocks, return null gracefully
+    if (error) {
+      // 406 = Not Acceptable (usually means table doesn't exist or RLS issue)
+      // PGRST116 = No rows returned (this is OK)
+      if (error.code === 'PGRST116' || error.code === '42P01' || error.status === 406) {
+        console.warn('Attendance reports table may not exist or RLS is blocking:', error.message)
+        return null
+      }
+      throw error
     }
+    
+    if (data) {
+      return {
+        daily_report: data.daily_report || [],
+        monthly_summary: data.monthly_summary || [],
+        statistics: data.statistics || {},
+        year: data.year,
+        month: data.month,
+      }
+    }
+    
+    return null
+  } catch (error) {
+    console.error('Error getting last process result:', error)
+    return null
   }
-  
-  return null
 }
 

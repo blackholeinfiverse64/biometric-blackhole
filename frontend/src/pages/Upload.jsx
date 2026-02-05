@@ -4,9 +4,12 @@ import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import DateCalendar from '../components/DateCalendar'
 import config from '../config'
+import { useAuth } from '../contexts/AuthContext'
+import { saveLastProcessResult } from '../services/supabaseService'
 
 export default function Upload() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [file, setFile] = useState(null)
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
@@ -58,8 +61,27 @@ export default function Upload() {
       })
 
       setResult(response.data)
-      // Store result in localStorage for reports page
-      localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
+      
+      // Save to Supabase if user is authenticated
+      if (user && response.data) {
+        try {
+          const reportData = {
+            ...response.data,
+            year: year,
+            month: month
+          }
+          await saveLastProcessResult(reportData)
+          console.log('✅ Saved to Supabase successfully')
+        } catch (supabaseError) {
+          console.error('Error saving to Supabase:', supabaseError)
+          // Fallback to localStorage if Supabase fails
+          localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
+          console.log('⚠️ Saved to localStorage as fallback')
+        }
+      } else {
+        // Fallback to localStorage if not authenticated
+        localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to process file. Please try again.')
       console.error('Error:', err)

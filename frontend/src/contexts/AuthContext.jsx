@@ -35,12 +35,18 @@ export const AuthProvider = ({ children }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle() // Use maybeSingle to avoid error if no rows
       
       if (error) {
         // PGRST116 = no rows returned (profile doesn't exist yet)
-        if (error.code === 'PGRST116') {
-          console.log('Profile not found for user, this is normal for new users')
+        // 42P01 = table doesn't exist
+        // 406 = Not Acceptable (RLS or table issue)
+        if (error.code === 'PGRST116' || error.code === '42P01' || error.status === 406) {
+          if (error.status === 406) {
+            console.warn('⚠️ Profiles table may not exist or RLS is blocking access. Please run supabase_schema.sql in your Supabase SQL Editor.')
+          } else {
+            console.log('Profile not found for user, this is normal for new users')
+          }
           setUserProfile(null)
           return null
         } else {
