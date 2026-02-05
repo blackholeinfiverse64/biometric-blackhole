@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
 import Upload from './pages/Upload'
@@ -28,7 +29,19 @@ const ProtectedRoute = ({ children }) => {
 const RoleBasedRedirect = () => {
   const { user, userProfile, loading } = useAuth()
   
-  if (loading) {
+  // Add timeout to prevent infinite loading
+  const [redirectTimeout, setRedirectTimeout] = useState(false)
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setRedirectTimeout(true)
+    }, 5000) // 5 second timeout
+    
+    return () => clearTimeout(timer)
+  }, [])
+  
+  // If loading takes too long, redirect anyway
+  if (loading && !redirectTimeout) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -39,6 +52,7 @@ const RoleBasedRedirect = () => {
     )
   }
   
+  // If no user after timeout, go to auth
   if (!user) {
     return <Navigate to="/auth" />
   }
