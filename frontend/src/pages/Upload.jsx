@@ -75,8 +75,9 @@ export default function Upload() {
           
           // Clear old localStorage data for this user (if exists)
           const userKey = `lastProcessResult_${user.id}`
-          localStorage.removeItem('lastProcessResult') // Remove old global key
           localStorage.removeItem(userKey) // Remove user-specific key
+          // Also remove old global key if it exists (migration cleanup)
+          localStorage.removeItem('lastProcessResult')
         } catch (supabaseError) {
           console.error('Error saving to Supabase:', supabaseError)
           // Fallback to user-specific localStorage if Supabase fails

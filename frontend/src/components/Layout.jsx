@@ -9,6 +9,12 @@ export default function Layout({ children }) {
 
   const handleLogout = async () => {
     try {
+      // DON'T clear localStorage - keep user-specific data for re-authentication
+      // Data is user-specific (keyed by user ID), so it's safe to keep
+      // When user re-authenticates, Supabase will be checked first,
+      // then localStorage as fallback
+      // This ensures User A can see their data when they log back in
+      
       await signOut()
       navigate('/auth')
     } catch (error) {
