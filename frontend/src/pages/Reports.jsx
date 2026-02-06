@@ -235,6 +235,24 @@ export default function Reports() {
     }
   }, [confirmedSalaries, user])
 
+  // Save manualUserDailyRecords to Supabase whenever they change
+  useEffect(() => {
+    if (user && manualUserDailyRecords && Object.keys(manualUserDailyRecords).length >= 0) {
+      saveManualUserDailyRecords(manualUserDailyRecords).catch(error => {
+        console.error('Error saving manual user daily records:', error)
+      })
+    }
+  }, [manualUserDailyRecords, user])
+
+  // Save manualUsers to Supabase whenever they change
+  useEffect(() => {
+    if (user && manualUsers.length >= 0) {
+      saveManualUsers(manualUsers).catch(error => {
+        console.error('Error saving manual users:', error)
+      })
+    }
+  }, [manualUsers, user])
+
   if (!data) {
     return (
       <div className="text-center py-12">
@@ -826,7 +844,15 @@ export default function Reports() {
                           console.log('Opening calendar for user:', emp)
                           console.log('Data available:', !!data)
                           console.log('Daily report available:', !!data?.daily_report)
-                          setSelectedUserForCalendar(emp)
+                          // For manual users, ensure we get the latest data from manualUsers array
+                          let userToShow = emp
+                          if (emp.is_manual) {
+                            const latestManualUser = manualUsers.find(u => String(u.employee_id) === String(emp.employee_id))
+                            if (latestManualUser) {
+                              userToShow = latestManualUser
+                            }
+                          }
+                          setSelectedUserForCalendar(userToShow)
                           setShowUserCalendar(true)
                         }
                       }}
@@ -2545,9 +2571,14 @@ export default function Reports() {
                 const userId = selectedUserForCalendar.employee_id
                 
                 // For manual users, use their stored daily records
+                // Always read from the latest state to ensure we have the most recent data
                 let userDailyData
                 if (isManualUser) {
-                  userDailyData = manualUserDailyRecords[userId] || []
+                  // Get the latest daily records for this user from state
+                  const userDailyRecordsKey = String(userId)
+                  userDailyData = manualUserDailyRecords[userDailyRecordsKey] || []
+                  // Ensure we're working with the latest data
+                  console.log('Loading calendar for manual user:', userId, 'Records:', userDailyData.length)
                 } else {
                   // For regular users, use daily_report from data
                   userDailyData = data.daily_report.filter(record => {
