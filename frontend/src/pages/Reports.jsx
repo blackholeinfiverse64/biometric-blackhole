@@ -235,23 +235,9 @@ export default function Reports() {
     }
   }, [confirmedSalaries, user])
 
-  // Save manualUserDailyRecords to Supabase whenever they change
-  useEffect(() => {
-    if (user && manualUserDailyRecords && Object.keys(manualUserDailyRecords).length >= 0) {
-      saveManualUserDailyRecords(manualUserDailyRecords).catch(error => {
-        console.error('Error saving manual user daily records:', error)
-      })
-    }
-  }, [manualUserDailyRecords, user])
-
-  // Save manualUsers to Supabase whenever they change
-  useEffect(() => {
-    if (user && manualUsers.length >= 0) {
-      saveManualUsers(manualUsers).catch(error => {
-        console.error('Error saving manual users:', error)
-      })
-    }
-  }, [manualUsers, user])
+  // Note: manualUserDailyRecords and manualUsers are saved immediately when edited
+  // in the calendar edit handler, so we don't need auto-save useEffect here
+  // This prevents race conditions and ensures data is saved before tab switches
 
   if (!data) {
     return (
@@ -2520,6 +2506,7 @@ export default function Reports() {
       {/* User Calendar Modal */}
       {showUserCalendar && selectedUserForCalendar && (
         <div 
+          key={`calendar-${selectedUserForCalendar.employee_id}-${JSON.stringify(manualUserDailyRecords[String(selectedUserForCalendar.employee_id)] || []).length}`}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -2992,7 +2979,7 @@ export default function Reports() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!editDayForm.status) {
                       alert('Please fill in Status')
                       return
@@ -3076,9 +3063,15 @@ export default function Reports() {
                         [userId]: updatedRecords
                       }
                       setManualUserDailyRecords(updatedManualRecords)
-                      saveManualUserDailyRecords(updatedManualRecords).catch(error => {
-                        console.error('Error saving manual user daily records:', error)
-                      })
+                      
+                      // Save immediately and await to ensure data is persisted before continuing
+                      try {
+                        await saveManualUserDailyRecords(updatedManualRecords)
+                        console.log('✅ Successfully saved manual user daily records to Supabase')
+                      } catch (error) {
+                        console.error('❌ Error saving manual user daily records:', error)
+                        alert('Warning: Failed to save daily records. Please try again.')
+                      }
 
                       // Recalculate monthly summary for this manual user
                       let totalHoursHHMM = '0:00'
@@ -3116,9 +3109,15 @@ export default function Reports() {
                       })
 
                       setManualUsers(updatedManualUsers)
-                      saveManualUsers(updatedManualUsers).catch(error => {
-                        console.error('Error saving manual users:', error)
-                      })
+                      
+                      // Save immediately and await to ensure data is persisted
+                      try {
+                        await saveManualUsers(updatedManualUsers)
+                        console.log('✅ Successfully saved manual users to Supabase')
+                      } catch (error) {
+                        console.error('❌ Error saving manual users:', error)
+                        alert('Warning: Failed to save manual user data. Please try again.')
+                      }
 
                       // Update selectedUserForCalendar to reflect new totals
                       const updatedUser = updatedManualUsers.find(u => String(u.employee_id) === userId)
