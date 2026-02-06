@@ -155,7 +155,8 @@ export default function Reports() {
           hasReports: !!lastResult,
           confirmedSalaries: confirmed.length,
           finalizedSalaries: Object.keys(finalized).length,
-          manualUsers: manual.length
+          manualUsers: manual.length,
+          manualUserDailyRecords: Object.keys(dailyRecords).length
         })
 
         // Load expanded buckets from localStorage (UI state)
@@ -2433,7 +2434,7 @@ export default function Reports() {
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!manualUserForm.employee_id || !manualUserForm.employee_name || !manualUserForm.total_hours) {
                     alert('Please fill all required fields')
                     return
@@ -2472,9 +2473,34 @@ export default function Reports() {
                   }
                   
                   setManualUsers(updatedUsers)
-                  saveManualUsers(updatedUsers).catch(error => {
-                    console.error('Error saving manual users:', error)
-                  })
+                  
+                  // Save immediately and await to ensure data is persisted
+                  try {
+                    await saveManualUsers(updatedUsers)
+                    console.log('✅ Successfully saved manual users to Supabase')
+                    
+                    // Initialize empty daily records for new user if it's a new user
+                    if (!editingManualUser) {
+                      const userId = String(newUser.employee_id)
+                      const updatedDailyRecords = {
+                        ...manualUserDailyRecords,
+                        [userId]: [] // Initialize with empty array
+                      }
+                      setManualUserDailyRecords(updatedDailyRecords)
+                      // Save empty daily records to ensure the user exists in DB for future updates
+                      try {
+                        await saveManualUserDailyRecords(updatedDailyRecords)
+                        console.log('✅ Initialized daily records for new manual user')
+                      } catch (error) {
+                        console.error('⚠️ Warning: Could not initialize daily records:', error)
+                        // Don't block user creation if daily records save fails
+                      }
+                    }
+                  } catch (error) {
+                    console.error('❌ Error saving manual users:', error)
+                    alert('Error saving manual user. Please try again.')
+                    return // Don't close modal if save failed
+                  }
                   
                   // Set hour rate if provided
                   if (manualUserForm.hour_rate) {

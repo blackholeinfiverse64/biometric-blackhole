@@ -249,7 +249,11 @@ export const saveManualUserDailyRecords = async (dailyRecords) => {
 
   // Update each manual user with their daily records
   for (const [employeeId, records] of Object.entries(dailyRecords)) {
-    const manualUser = manualUsers.find(u => u.employee_id === parseInt(employeeId))
+    const employeeIdNum = parseInt(employeeId)
+    const manualUser = manualUsers.find(u => 
+      u.employee_id === employeeIdNum || String(u.employee_id) === String(employeeId)
+    )
+    
     if (manualUser) {
       const { error } = await supabase
         .from('manual_users')
@@ -259,7 +263,14 @@ export const saveManualUserDailyRecords = async (dailyRecords) => {
         })
         .eq('id', manualUser.id)
       
-      if (error) throw error
+      if (error) {
+        console.error(`Error updating daily records for employee ${employeeId}:`, error)
+        throw error
+      }
+      console.log(`✅ Saved daily records for employee ${employeeId}: ${records.length} records`)
+    } else {
+      console.warn(`⚠️ Manual user with employee_id ${employeeId} not found in database. Records not saved.`)
+      // Don't throw error, just log warning - the user might have been deleted
     }
   }
 }
@@ -273,14 +284,25 @@ export const getManualUserDailyRecords = async () => {
     .select('employee_id, daily_records')
     .eq('user_id', userId)
 
-  if (error) throw error
+  if (error) {
+    console.error('Error fetching manual user daily records:', error)
+    throw error
+  }
   
   const result = {}
-  data.forEach(item => {
-    if (item.daily_records) {
-      result[item.employee_id] = item.daily_records
-    }
-  })
+  if (data && Array.isArray(data)) {
+    data.forEach(item => {
+      // Handle both string and number employee_id - use string as key for consistency
+      const empId = String(item.employee_id)
+      if (item.daily_records && Array.isArray(item.daily_records)) {
+        result[empId] = item.daily_records
+      } else {
+        // Initialize with empty array if no records exist yet
+        result[empId] = []
+      }
+    })
+    console.log(`✅ Loaded daily records for ${Object.keys(result).length} manual users`)
+  }
   
   return result
 }

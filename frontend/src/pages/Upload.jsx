@@ -91,7 +91,7 @@ export default function Upload() {
         }
       } else {
         // Fallback to localStorage if not authenticated
-        localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
+      localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
       }
       
       // Automatically navigate to reports page after successful upload
