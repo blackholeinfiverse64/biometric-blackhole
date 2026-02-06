@@ -165,7 +165,12 @@ export default function Reports() {
           setExpandedBuckets(JSON.parse(storedBuckets))
         }
       } catch (error) {
-        console.error('Error loading data from Supabase:', error)
+        console.error('❌ Error loading data from Supabase:', error)
+        console.error('Error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details
+        })
         // Fallback to user-specific localStorage ONLY
         try {
           if (user) {
@@ -240,7 +245,35 @@ export default function Reports() {
   // in the calendar edit handler, so we don't need auto-save useEffect here
   // This prevents race conditions and ensures data is saved before tab switches
 
-  if (!data) {
+  // If there's no processed report yet, we still want to show manual users (and their calendar),
+  // confirmed salaries, finalized salaries, etc. So we use a safe fallback "empty report".
+  const safeReportData = data || {
+    monthly_summary: [],
+    daily_report: [],
+    statistics: {},
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  }
+
+  // Show loading state while data is being fetched
+  if (loadingData) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading your data...</p>
+      </div>
+    )
+  }
+
+  // Only show the "No Reports Available" empty state when there's truly nothing to show.
+  // (i.e. no report AND no manual users AND no confirmed/finalized data)
+  // IMPORTANT: Check this AFTER loading is complete
+  if (
+    !data &&
+    manualUsers.length === 0 &&
+    confirmedSalaries.length === 0 &&
+    Object.keys(finalizedSalaries).length === 0
+  ) {
     return (
       <div className="text-center py-12">
         <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -255,7 +288,7 @@ export default function Reports() {
     )
   }
 
-  const { monthly_summary: originalMonthlySummary, daily_report, statistics } = data
+  const { monthly_summary: originalMonthlySummary, daily_report, statistics } = safeReportData
   
   // Merge manual users with monthly_summary
   const monthly_summary = [...originalMonthlySummary, ...manualUsers]

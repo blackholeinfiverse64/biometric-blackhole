@@ -79,22 +79,56 @@ export const saveManualUsers = async (users) => {
 
 export const getManualUsers = async () => {
   const userId = await getUserId()
-  if (!userId) throw new Error('User not authenticated')
+  if (!userId) {
+    console.warn('⚠️ getManualUsers: User not authenticated')
+    throw new Error('User not authenticated')
+  }
 
+  console.log(`📥 Fetching manual users for user: ${userId}`)
   const { data, error } = await supabase
     .from('manual_users')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
-  if (error) throw error
+  if (error) {
+    console.error('❌ Error fetching manual users:', error)
+    throw error
+  }
+  
+  console.log(`✅ Fetched ${data?.length || 0} manual users from Supabase`)
   
   // Convert total_hours back to HH:MM format if needed
-  const formatted = (data || []).map(user => ({
-    ...user,
-    is_manual: true, // Add flag for manual users
-    total_hours: user.total_hours, // Keep as is (will be converted in component if needed)
-  }))
+  // If stored as decimal (e.g., 25.0), convert to HH:MM (e.g., "25:00")
+  // If already in HH:MM format, keep as is
+  const formatted = (data || []).map(user => {
+    let totalHours = user.total_hours
+    
+    // If it's a number (decimal), convert to HH:MM format
+    if (typeof totalHours === 'number') {
+      const hours = Math.floor(totalHours)
+      const minutes = Math.round((totalHours - hours) * 60)
+      totalHours = `${hours}:${String(minutes).padStart(2, '0')}`
+    } else if (typeof totalHours === 'string' && !totalHours.includes(':')) {
+      // If it's a string number, convert to HH:MM
+      const num = parseFloat(totalHours) || 0
+      const hours = Math.floor(num)
+      const minutes = Math.round((num - hours) * 60)
+      totalHours = `${hours}:${String(minutes).padStart(2, '0')}`
+    }
+    
+    return {
+      ...user,
+      is_manual: true, // Add flag for manual users
+      total_hours: totalHours, // Now in HH:MM format
+    }
+  })
+  
+  console.log('📋 Formatted manual users:', formatted.map(u => ({
+    id: u.employee_id,
+    name: u.employee_name,
+    total_hours: u.total_hours
+  })))
   
   return formatted
 }
