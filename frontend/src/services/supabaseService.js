@@ -456,6 +456,13 @@ export const savePaidEmployees = async (paidEmployees) => {
   const userId = await getUserId()
   if (!userId) throw new Error('User not authenticated')
 
+  // Always save to localStorage as backup
+  try {
+    localStorage.setItem(`paidEmployees_${userId}`, JSON.stringify(paidEmployees))
+  } catch (e) {
+    console.warn('Could not save to localStorage:', e)
+  }
+
   // Convert object to array format for storage
   const entries = Object.entries(paidEmployees).map(([monthKey, employeeIds]) => ({
     user_id: userId,
@@ -464,7 +471,16 @@ export const savePaidEmployees = async (paidEmployees) => {
   }))
 
   // Delete existing and insert new
-  await supabase.from('paid_employees').delete().eq('user_id', userId)
+  const { error: deleteError } = await supabase.from('paid_employees').delete().eq('user_id', userId)
+  
+  if (deleteError) {
+    // If table doesn't exist, localStorage fallback is already saved
+    if (deleteError.code === '42P01' || deleteError.message?.includes('does not exist')) {
+      console.warn('paid_employees table does not exist, using localStorage fallback')
+      return
+    }
+    console.error('Error deleting paid employees:', deleteError)
+  }
   
   if (entries.length > 0) {
     const { error } = await supabase
@@ -472,13 +488,12 @@ export const savePaidEmployees = async (paidEmployees) => {
       .insert(entries)
     
     if (error) {
-      // If table doesn't exist, use localStorage fallback
-      if (error.code === '42P01') {
+      // If table doesn't exist, localStorage fallback is already saved
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
         console.warn('paid_employees table does not exist, using localStorage fallback')
-        localStorage.setItem(`paidEmployees_${userId}`, JSON.stringify(paidEmployees))
         return
       }
-      throw error
+      console.error('Error inserting paid employees:', error)
     }
   }
 }
@@ -487,6 +502,7 @@ export const getPaidEmployees = async () => {
   const userId = await getUserId()
   if (!userId) throw new Error('User not authenticated')
 
+  // Try Supabase first
   const { data, error } = await supabase
     .from('paid_employees')
     .select('*')
@@ -494,19 +510,42 @@ export const getPaidEmployees = async () => {
 
   if (error) {
     // If table doesn't exist, try localStorage fallback
-    if (error.code === '42P01') {
+    if (error.code === '42P01' || error.message?.includes('does not exist')) {
       console.warn('paid_employees table does not exist, using localStorage fallback')
       const stored = localStorage.getItem(`paidEmployees_${userId}`)
       return stored ? JSON.parse(stored) : {}
     }
-    throw error
+    // For other errors, also try localStorage
+    console.error('Error fetching paid employees from Supabase:', error)
+    const stored = localStorage.getItem(`paidEmployees_${userId}`)
+    return stored ? JSON.parse(stored) : {}
   }
   
-  // Convert array back to object
-  const result = {}
-  data.forEach(item => {
-    result[item.month_key] = item.employee_ids || []
-  })
+  // If Supabase returned data, use it
+  if (data && data.length > 0) {
+    // Convert array back to object
+    const result = {}
+    data.forEach(item => {
+      result[item.month_key] = item.employee_ids || []
+    })
+    return result
+  }
   
-  return result
+  // If Supabase has no data, check localStorage (migration scenario)
+  const stored = localStorage.getItem(`paidEmployees_${userId}`)
+  if (stored) {
+    const parsed = JSON.parse(stored)
+    // If we have localStorage data but no Supabase data, try to migrate it
+    if (Object.keys(parsed).length > 0) {
+      console.log('Migrating paid employees from localStorage to Supabase')
+      try {
+        await savePaidEmployees(parsed)
+      } catch (e) {
+        console.warn('Could not migrate paid employees to Supabase:', e)
+      }
+    }
+    return parsed
+  }
+  
+  return {}
 }
