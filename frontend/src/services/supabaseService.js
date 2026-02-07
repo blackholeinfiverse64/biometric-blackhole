@@ -48,6 +48,21 @@ export const getAttendanceReport = async (year, month) => {
   return data
 }
 
+// Helper: Convert HH:MM string to decimal hours for storage
+const hhmmToDecimal = (hhmm) => {
+  if (!hhmm || typeof hhmm !== 'string') return 0
+  const parts = hhmm.trim().split(':')
+  if (parts.length !== 2) {
+    // Try parsing as decimal number
+    const num = parseFloat(hhmm)
+    return isNaN(num) ? 0 : num
+  }
+  const hours = parseInt(parts[0], 10) || 0
+  const minutes = parseInt(parts[1], 10) || 0
+  // Convert to decimal: 8:30 -> 8.5 (not 8.30!)
+  return hours + (minutes / 60)
+}
+
 // Manual Users
 export const saveManualUsers = async (users) => {
   const userId = await getUserId()
@@ -61,7 +76,8 @@ export const saveManualUsers = async (users) => {
       user_id: userId,
       employee_id: user.employee_id,
       employee_name: user.employee_name,
-      total_hours: typeof user.total_hours === 'string' ? parseFloat(user.total_hours.replace(':', '.')) || 0 : (user.total_hours || 0),
+      // Properly convert HH:MM to decimal hours for storage
+      total_hours: typeof user.total_hours === 'string' ? hhmmToDecimal(user.total_hours) : (user.total_hours || 0),
       hour_rate: user.hour_rate ? parseFloat(user.hour_rate) : null,
       present_days: user.present_days || 0,
       absent_days: user.absent_days || 0,

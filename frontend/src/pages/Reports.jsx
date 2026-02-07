@@ -241,6 +241,15 @@ export default function Reports() {
     }
   }, [confirmedSalaries, user])
 
+  // Save hourRates to Supabase whenever they change
+  useEffect(() => {
+    if (user && Object.keys(hourRates).length > 0) {
+      saveHourRates(hourRates).catch(error => {
+        console.error('Error saving hour rates:', error)
+      })
+    }
+  }, [hourRates, user])
+
   // Note: manualUserDailyRecords and manualUsers are saved immediately when edited
   // in the calendar edit handler, so we don't need auto-save useEffect here
   // This prevents race conditions and ensures data is saved before tab switches
