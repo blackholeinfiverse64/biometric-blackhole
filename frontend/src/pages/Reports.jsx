@@ -148,7 +148,23 @@ export default function Reports() {
         setConfirmedSalaries(confirmed)
         setFinalizedSalaries(finalized)
         setManualUsers(manual)
-        setManualUserDailyRecords(dailyRecords)
+        
+        // Merge daily records: prefer loaded dailyRecords, but also sync from manual users
+        // This ensures calendar data is shown even if getManualUserDailyRecords fails
+        const mergedDailyRecords = { ...dailyRecords }
+        if (manual && Array.isArray(manual)) {
+          manual.forEach(user => {
+            const userId = String(user.employee_id)
+            // If we don't have daily records from the separate call, use the ones stored in user
+            if (!mergedDailyRecords[userId] || mergedDailyRecords[userId].length === 0) {
+              if (user.daily_records && Array.isArray(user.daily_records) && user.daily_records.length > 0) {
+                mergedDailyRecords[userId] = user.daily_records
+                console.log(`📋 Synced ${user.daily_records.length} daily records from manual user ${userId}`)
+              }
+            }
+          })
+        }
+        setManualUserDailyRecords(mergedDailyRecords)
         setHourRates(rates)
         
         console.log(`✅ Data loaded for user ${user.id}:`, {
@@ -156,7 +172,7 @@ export default function Reports() {
           confirmedSalaries: confirmed.length,
           finalizedSalaries: Object.keys(finalized).length,
           manualUsers: manual.length,
-          manualUserDailyRecords: Object.keys(dailyRecords).length
+          manualUserDailyRecords: Object.keys(mergedDailyRecords).length
         })
 
         // Load expanded buckets from localStorage (UI state)
@@ -977,14 +993,22 @@ export default function Reports() {
                           <button
                             onClick={() => {
                               if (confirm(`Are you sure you want to delete ${emp.employee_name} (ID: ${emp.employee_id})?`)) {
-                                // Remove from manual users
-                                const updatedManualUsers = manualUsers.filter(
-                                  u => u.employee_id !== emp.employee_id
-                                )
+                                // Remove from manual users - preserve daily_records for remaining users
+                                const updatedManualUsers = manualUsers
+                                  .filter(u => u.employee_id !== emp.employee_id)
+                                  .map(u => ({
+                                    ...u,
+                                    daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
+                                  }))
                                 setManualUsers(updatedManualUsers)
                                 saveManualUsers(updatedManualUsers).catch(error => {
                                   console.error('Error saving manual users:', error)
                                 })
+                                
+                                // Remove daily records for deleted user
+                                const updatedDailyRecords = { ...manualUserDailyRecords }
+                                delete updatedDailyRecords[String(emp.employee_id)]
+                                setManualUserDailyRecords(updatedDailyRecords)
                                 
                                 // Remove from confirmed salaries if exists
                                 setConfirmedSalaries(prev => 
@@ -2495,15 +2519,26 @@ export default function Reports() {
                     present_days: 0,
                     absent_days: 0,
                     auto_assigned_days: 0,
-                    is_manual: true
+                    is_manual: true,
+                    daily_records: [] // Initialize with empty array
                   }
                   
                   let updatedUsers
                   if (editingManualUser) {
-                    // Update existing manual user
-                    updatedUsers = manualUsers.map(u => 
-                      u.employee_id === editingManualUser.employee_id ? newUser : u
-                    )
+                    // Update existing manual user - preserve daily_records
+                    updatedUsers = manualUsers.map(u => {
+                      if (u.employee_id === editingManualUser.employee_id) {
+                        return {
+                          ...newUser,
+                          daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
+                        }
+                      }
+                      // Preserve daily_records for other users too
+                      return {
+                        ...u,
+                        daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
+                      }
+                    })
                   } else {
                     // Check if ID already exists
                     if (manualUsers.find(u => u.employee_id === newUser.employee_id) || 
@@ -2511,7 +2546,14 @@ export default function Reports() {
                       alert('Employee ID already exists')
                       return
                     }
-                    updatedUsers = [...manualUsers, newUser]
+                    // Add new user, preserve daily_records for existing users
+                    updatedUsers = [
+                      ...manualUsers.map(u => ({
+                        ...u,
+                        daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
+                      })),
+                      newUser
+                    ]
                   }
                   
                   setManualUsers(updatedUsers)
@@ -3162,7 +3204,7 @@ export default function Reports() {
                         }
                       })
 
-                      // Update manual user in the list
+                      // Update manual user in the list - include daily_records for proper persistence
                       const updatedManualUsers = manualUsers.map(u => {
                         if (String(u.employee_id) === userId) {
                           return {
@@ -3170,10 +3212,16 @@ export default function Reports() {
                             total_hours: totalHoursHHMM, // Store as HH:MM format
                             present_days: presentDays,
                             absent_days: absentDays,
-                            auto_assigned_days: autoAssignedDays
+                            auto_assigned_days: autoAssignedDays,
+                            daily_records: updatedRecords // Include daily records for persistence
                           }
                         }
-                        return u
+                        // For other users, ensure their daily_records are included
+                        const otherUserId = String(u.employee_id)
+                        return {
+                          ...u,
+                          daily_records: manualUserDailyRecords[otherUserId] || u.daily_records || []
+                        }
                       })
 
                       setManualUsers(updatedManualUsers)
