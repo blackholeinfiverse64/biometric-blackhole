@@ -15,6 +15,8 @@ import {
   getManualUserDailyRecords,
   saveHourRates,
   getHourRates,
+  savePaidEmployees,
+  getPaidEmployees,
 } from '../services/supabaseService'
 import {
   BarChart,
@@ -49,6 +51,7 @@ export default function Reports() {
   const [showDeleteFinalizedModal, setShowDeleteFinalizedModal] = useState(false)
   const [monthToDelete, setMonthToDelete] = useState('')
   const [selectedFinalizedEmployees, setSelectedFinalizedEmployees] = useState({}) // Object: { monthKey: Set of employee_ids }
+  const [paidEmployees, setPaidEmployees] = useState({}) // Object: { monthKey: Set of employee_ids } - tracks paid status
   const [manualUsers, setManualUsers] = useState([])
   const [manualUserDailyRecords, setManualUserDailyRecords] = useState({}) // Object with employee_id as key, array of daily records as value
   const [showAddManualUserModal, setShowAddManualUserModal] = useState(false)
@@ -80,6 +83,7 @@ export default function Reports() {
         setManualUsers([])
         setManualUserDailyRecords({})
         setHourRates({})
+        setPaidEmployees({})
         setSelectedEmployee(null)
         setLoadingData(false)
         return
@@ -94,6 +98,7 @@ export default function Reports() {
       setHourRates({})
       setSelectedEmployee(null)
       setSelectedFinalizedEmployees({})
+      setPaidEmployees({})
 
       try {
         // Load all data in parallel - all queries are user-specific via Supabase service
@@ -103,14 +108,16 @@ export default function Reports() {
           finalized,
           manual,
           dailyRecords,
-          rates
+          rates,
+          paidStatus
         ] = await Promise.all([
           getLastProcessResult().catch(() => null),
           getConfirmedSalaries().catch(() => []),
           getFinalizedSalaries().catch(() => ({})),
           getManualUsers().catch(() => []),
           getManualUserDailyRecords().catch(() => ({})),
-          getHourRates().catch(() => ({}))
+          getHourRates().catch(() => ({})),
+          getPaidEmployees().catch(() => ({}))
         ])
 
         // Set data - prioritize Supabase, fallback to localStorage
@@ -167,12 +174,20 @@ export default function Reports() {
         setManualUserDailyRecords(mergedDailyRecords)
         setHourRates(rates)
         
+        // Convert paid status from array to Set for each month
+        const paidStatusSets = {}
+        Object.entries(paidStatus).forEach(([monthKey, employeeIds]) => {
+          paidStatusSets[monthKey] = new Set(employeeIds)
+        })
+        setPaidEmployees(paidStatusSets)
+        
         console.log(`✅ Data loaded for user ${user.id}:`, {
           hasReports: !!lastResult,
           confirmedSalaries: confirmed.length,
           finalizedSalaries: Object.keys(finalized).length,
           manualUsers: manual.length,
-          manualUserDailyRecords: Object.keys(mergedDailyRecords).length
+          manualUserDailyRecords: Object.keys(mergedDailyRecords).length,
+          paidEmployees: Object.keys(paidStatus).length
         })
 
         // Load expanded buckets from localStorage (UI state)
@@ -2208,6 +2223,9 @@ export default function Reports() {
                               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Employee Name
                               </th>
+                              <th className="px-6 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Status
+                              </th>
                               <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Total Hours
                               </th>
@@ -2262,6 +2280,41 @@ export default function Reports() {
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   <span className="text-sm font-medium text-gray-900">{emp.employee_name}</span>
                                 </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                  {(() => {
+                                    const paidForMonth = paidEmployees[monthKey] || new Set()
+                                    const isPaid = paidForMonth.has(String(emp.employee_id))
+                                    
+                                    return isPaid ? (
+                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 cursor-not-allowed">
+                                        <CheckCircle className="w-3 h-3 mr-1" />
+                                        Paid
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          const updatedPaid = { ...paidEmployees }
+                                          const updatedSet = new Set(paidForMonth)
+                                          updatedSet.add(String(emp.employee_id))
+                                          updatedPaid[monthKey] = updatedSet
+                                          setPaidEmployees(updatedPaid)
+                                          
+                                          // Save to Supabase - convert Sets to arrays for storage
+                                          const paidToSave = {}
+                                          Object.entries(updatedPaid).forEach(([key, set]) => {
+                                            paidToSave[key] = Array.from(set)
+                                          })
+                                          savePaidEmployees(paidToSave).catch(error => {
+                                            console.error('Error saving paid status:', error)
+                                          })
+                                        }}
+                                        className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 hover:bg-green-100 hover:text-green-800 transition-colors duration-200"
+                                      >
+                                        Mark Paid
+                                      </button>
+                                    )
+                                  })()}
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
                                   <span className="text-sm text-gray-700 font-medium">
                                     {getHHMM(emp)} <span className="text-gray-500 text-xs">hrs</span>
@@ -2283,7 +2336,7 @@ export default function Reports() {
                           </tbody>
                           <tfoot>
                             <tr className="bg-gradient-to-r from-green-50 to-green-100 border-t-2 border-green-200">
-                              <td colSpan="5" className="px-6 py-4 text-right">
+                              <td colSpan="6" className="px-6 py-4 text-right">
                                 <span className="text-base font-bold text-gray-900">Grand Total Salary:</span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">

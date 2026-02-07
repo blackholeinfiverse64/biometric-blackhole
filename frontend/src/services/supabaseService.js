@@ -451,3 +451,62 @@ export const getLastProcessResult = async () => {
   }
 }
 
+// Paid Employees (tracks which employees have been paid for each month)
+export const savePaidEmployees = async (paidEmployees) => {
+  const userId = await getUserId()
+  if (!userId) throw new Error('User not authenticated')
+
+  // Convert object to array format for storage
+  const entries = Object.entries(paidEmployees).map(([monthKey, employeeIds]) => ({
+    user_id: userId,
+    month_key: monthKey,
+    employee_ids: employeeIds, // Array of employee IDs
+  }))
+
+  // Delete existing and insert new
+  await supabase.from('paid_employees').delete().eq('user_id', userId)
+  
+  if (entries.length > 0) {
+    const { error } = await supabase
+      .from('paid_employees')
+      .insert(entries)
+    
+    if (error) {
+      // If table doesn't exist, use localStorage fallback
+      if (error.code === '42P01') {
+        console.warn('paid_employees table does not exist, using localStorage fallback')
+        localStorage.setItem(`paidEmployees_${userId}`, JSON.stringify(paidEmployees))
+        return
+      }
+      throw error
+    }
+  }
+}
+
+export const getPaidEmployees = async () => {
+  const userId = await getUserId()
+  if (!userId) throw new Error('User not authenticated')
+
+  const { data, error } = await supabase
+    .from('paid_employees')
+    .select('*')
+    .eq('user_id', userId)
+
+  if (error) {
+    // If table doesn't exist, try localStorage fallback
+    if (error.code === '42P01') {
+      console.warn('paid_employees table does not exist, using localStorage fallback')
+      const stored = localStorage.getItem(`paidEmployees_${userId}`)
+      return stored ? JSON.parse(stored) : {}
+    }
+    throw error
+  }
+  
+  // Convert array back to object
+  const result = {}
+  data.forEach(item => {
+    result[item.month_key] = item.employee_ids || []
+  })
+  
+  return result
+}
