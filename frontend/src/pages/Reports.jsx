@@ -2241,19 +2241,27 @@ export default function Reports() {
                             {monthData.employees.map((emp, index) => {
                               const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
                               const isSelected = selectedForMonth.has(String(emp.employee_id))
+                              const paidForMonth = paidEmployees[monthKey] || new Set()
+                              const isPaid = paidForMonth.has(String(emp.employee_id))
                               
                               return (
                               <tr 
                                 key={emp.employee_id} 
-                                className={`hover:bg-gray-50 transition-colors duration-150 ${
-                                  isSelected ? 'bg-blue-50 border-l-4 border-blue-500' : 
-                                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                                className={`transition-all duration-150 ${
+                                  isPaid 
+                                    ? 'bg-gray-100 opacity-50 pointer-events-none' 
+                                    : isSelected 
+                                      ? 'bg-blue-50 border-l-4 border-blue-500 hover:bg-gray-50' 
+                                      : index % 2 === 0 
+                                        ? 'bg-white hover:bg-gray-50' 
+                                        : 'bg-gray-50/50 hover:bg-gray-50'
                                 }`}
                               >
-                                <td className="px-6 py-4 whitespace-nowrap">
+                                <td className={`px-6 py-4 whitespace-nowrap ${isPaid ? 'pointer-events-auto' : ''}`}>
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
+                                    disabled={isPaid}
                                     onChange={(e) => {
                                       const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
                                       const updatedSelection = { ...selectedFinalizedEmployees }
@@ -2268,25 +2276,21 @@ export default function Reports() {
                                       updatedSelection[monthKey] = updatedSet
                                       setSelectedFinalizedEmployees(updatedSelection)
                                     }}
-                                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                    className={`w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 ${isPaid ? 'cursor-not-allowed opacity-50' : ''}`}
                                     onClick={(e) => e.stopPropagation()}
                                   />
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-sm font-semibold text-gray-900 bg-gray-100 px-2 py-1 rounded">
+                                  <span className={`text-sm font-semibold bg-gray-100 px-2 py-1 rounded ${isPaid ? 'text-gray-500' : 'text-gray-900'}`}>
                                     {emp.employee_id}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-sm font-medium text-gray-900">{emp.employee_name}</span>
+                                  <span className={`text-sm font-medium ${isPaid ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{emp.employee_name}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  {(() => {
-                                    const paidForMonth = paidEmployees[monthKey] || new Set()
-                                    const isPaid = paidForMonth.has(String(emp.employee_id))
-                                    
-                                    return isPaid ? (
-                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 cursor-not-allowed">
+                                <td className="px-6 py-4 whitespace-nowrap text-center pointer-events-auto">
+                                  {isPaid ? (
+                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
                                         <CheckCircle className="w-3 h-3 mr-1" />
                                         Paid
                                       </span>
@@ -2312,21 +2316,20 @@ export default function Reports() {
                                       >
                                         Mark Paid
                                       </button>
-                                    )
-                                  })()}
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <span className="text-sm text-gray-700 font-medium">
-                                    {getHHMM(emp)} <span className="text-gray-500 text-xs">hrs</span>
+                                  <span className={`text-sm font-medium ${isPaid ? 'text-gray-400' : 'text-gray-700'}`}>
+                                    {getHHMM(emp)} <span className={`text-xs ${isPaid ? 'text-gray-400' : 'text-gray-500'}`}>hrs</span>
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <span className="text-sm text-gray-700 font-medium">
+                                  <span className={`text-sm font-medium ${isPaid ? 'text-gray-400' : 'text-gray-700'}`}>
                                     ₹{parseFloat(emp.hour_rate || 0).toFixed(2)}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <span className="text-sm font-bold text-green-600">
+                                  <span className={`text-sm font-bold ${isPaid ? 'text-gray-400' : 'text-green-600'}`}>
                                     ₹{parseFloat(emp.salary || 0).toFixed(2)}
                                   </span>
                                 </td>
