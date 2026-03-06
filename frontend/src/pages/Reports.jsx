@@ -396,6 +396,9 @@ export default function Reports() {
     )
   }
 
+  // Filter confirmed salaries to exclude employees that are already finalized
+  const filteredConfirmedSalaries = confirmedSalaries.filter(emp => !isEmployeeFinalized(emp.employee_id))
+
   // ========== HH:MM Format Helper Functions ==========
   
   // Convert HH:MM to total minutes (for calculations)
@@ -730,9 +733,9 @@ export default function Reports() {
               }`}
             >
               <span>Confirmed Salaries</span>
-              {confirmedSalaries.length > 0 && (
+              {filteredConfirmedSalaries.length > 0 && (
                 <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">
-                  {confirmedSalaries.length}
+                  {filteredConfirmedSalaries.length}
                 </span>
               )}
             </button>
@@ -1206,7 +1209,7 @@ export default function Reports() {
       {/* Confirmed Salaries Tab Content */}
       {activeTab === 'confirmed' && (
         <div className="card">
-          {confirmedSalaries.length > 0 ? (
+          {filteredConfirmedSalaries.length > 0 ? (
             <>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirmed Salaries</h3>
               <div className="bg-white rounded-lg p-4 mb-4">
@@ -1235,7 +1238,7 @@ export default function Reports() {
                       </tr>
                     </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                      {confirmedSalaries.map((emp, index) => (
+                      {filteredConfirmedSalaries.map((emp) => (
                         <tr key={emp.employee_id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {emp.employee_id}
@@ -1277,7 +1280,7 @@ export default function Reports() {
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => {
-                                  setSelectedEmployeeForAction({ ...emp, index })
+                                  setSelectedEmployeeForAction({ ...emp })
                                   setEditFormData({
                                     total_hours: getHHMM(emp), // Convert to HH:MM format
                                     hour_rate: emp.hour_rate ? String(emp.hour_rate) : '',
@@ -1292,7 +1295,7 @@ export default function Reports() {
                               </button>
                               <button
                                 onClick={() => {
-                                  setSelectedEmployeeForAction({ ...emp, index })
+                                  setSelectedEmployeeForAction({ ...emp })
                                   setShowDeleteModal(true)
                                 }}
                                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
@@ -1311,7 +1314,7 @@ export default function Reports() {
                           Total Salary:
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap font-bold text-green-600 text-lg">
-                          ₹{confirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0).toFixed(2)}
+                          ₹{filteredConfirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0).toFixed(2)}
                         </td>
                       </tr>
                     </tfoot>
@@ -1323,7 +1326,7 @@ export default function Reports() {
                 <div className="flex items-center justify-center space-x-4">
                   <button
                     onClick={() => {
-                      if (confirmedSalaries.length === 0) {
+                      if (filteredConfirmedSalaries.length === 0) {
                         alert('No salaries to finalize')
                         return
                       }
@@ -1347,7 +1350,7 @@ export default function Reports() {
                         )
                         
                         // Add new employees (newer entries replace older ones for same employee_id)
-                        confirmedSalaries.forEach(newEmp => {
+                        filteredConfirmedSalaries.forEach(newEmp => {
                           existingEmployeesMap.set(newEmp.employee_id, {
                             ...newEmp,
                             finalized_at: new Date().toISOString()
@@ -1358,7 +1361,7 @@ export default function Reports() {
                         updatedEmployees = Array.from(existingEmployeesMap.values())
                       } else {
                         // Month container doesn't exist - create new one
-                        updatedEmployees = confirmedSalaries.map(emp => ({
+                        updatedEmployees = filteredConfirmedSalaries.map(emp => ({
                           ...emp,
                           finalized_at: new Date().toISOString()
                         }))
@@ -1385,13 +1388,12 @@ export default function Reports() {
                       })
                       
                       const actionMessage = existingMonthData 
-                        ? `Added ${confirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
-                        : `Successfully created new ${monthKey} container with ${confirmedSalaries.length} employees`
+                        ? `Added ${filteredConfirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
+                        : `Successfully created new ${monthKey} container with ${filteredConfirmedSalaries.length} employees`
                       
-                      // Clear confirmed salaries after finalizing (they're now in finalized)
-                      setConfirmedSalaries([])
-                      // Keep data and other state so user can still view monthly summary
-                      // Only clear confirmed salaries since they've been finalized
+                      // Remove the finalized employees from confirmedSalaries
+                      const finalizedIds = new Set(filteredConfirmedSalaries.map(emp => emp.employee_id))
+                      setConfirmedSalaries(prev => prev.filter(emp => !finalizedIds.has(emp.employee_id)))
                       
                       alert(`${actionMessage}`)
                       
@@ -1544,9 +1546,9 @@ export default function Reports() {
               </button>
               <button
                 onClick={() => {
-                  // Update the confirmed salaries array
-                  const updated = confirmedSalaries.map((emp, i) => {
-                    if (i === selectedEmployeeForAction.index) {
+                  // Update the confirmed salaries array using employee_id
+                  const updated = confirmedSalaries.map((emp) => {
+                    if (emp.employee_id === selectedEmployeeForAction.employee_id) {
                       // Only update fields that have valid values, keep existing values otherwise
                       const updatedEmp = { ...emp }
                       
@@ -1577,7 +1579,7 @@ export default function Reports() {
                   setConfirmedSalaries(updated)
                   
                   // Get the updated employee data to show in form
-                  const updatedEmployee = updated.find((emp, i) => i === selectedEmployeeForAction.index)
+                  const updatedEmployee = updated.find((emp) => emp.employee_id === selectedEmployeeForAction.employee_id)
                   
                   // Update the form data with the newly updated values (keep modal open to show updated values)
                   if (updatedEmployee) {
@@ -1593,7 +1595,7 @@ export default function Reports() {
                       salary: updatedEmployee.salary ? String(updatedEmployee.salary) : ''
                     })
                     // Update selectedEmployeeForAction with the updated data
-                    setSelectedEmployeeForAction({ ...updatedEmployee, index: selectedEmployeeForAction.index })
+                    setSelectedEmployeeForAction({ ...updatedEmployee })
                   }
                   
                   alert(`Salary updated successfully for ${selectedEmployeeForAction.employee_name}!`)
@@ -1638,9 +1640,9 @@ export default function Reports() {
               </button>
               <button
                 onClick={() => {
-                  // Delete logic - remove from confirmed salaries and clear hour rate in monthly summary
+                  // Delete logic - remove from confirmed salaries using employee_id
                   setConfirmedSalaries(prev => 
-                    prev.filter((_, i) => i !== selectedEmployeeForAction.index)
+                    prev.filter((emp) => emp.employee_id !== selectedEmployeeForAction.employee_id)
                   )
                   // Clear the hour rate for this employee in monthly summary
                   setHourRates(prev => {
