@@ -235,7 +235,12 @@ export default function Reports() {
     if (newUploadKey && newUploadKey !== lastUploadKeyRef.current) {
       lastUploadKeyRef.current = newUploadKey
       setInitialLoadComplete(false)
-      console.log('🔄 New file uploaded - reloading data...')
+      // IMPORTANT: Clear confirmed salaries and hour rates immediately when new file is uploaded
+      // This ensures old data doesn't persist in the UI
+      setConfirmedSalaries([])
+      setHourRates({})
+      setSelectedEmployees({})
+      console.log('🔄 New file uploaded - clearing old data and reloading...')
       loadDataFromSupabase()
       return
     }

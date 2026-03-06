@@ -205,6 +205,20 @@ export const getFinalizedSalaries = async () => {
 }
 
 // Hour Rates
+
+// Clear all hour rates for the current user (called when new file is uploaded)
+export const clearHourRates = async () => {
+  const userId = await getUserId()
+  if (!userId) throw new Error('User not authenticated')
+
+  const { error } = await supabase.from('hour_rates').delete().eq('user_id', userId)
+  if (error) {
+    console.error('Error clearing hour rates:', error)
+    throw error
+  }
+  console.log('✅ Cleared hour rates for user:', userId)
+}
+
 export const saveHourRates = async (hourRates) => {
   const userId = await getUserId()
   if (!userId) throw new Error('User not authenticated')
@@ -372,6 +386,7 @@ export const getManualUserDailyRecords = async () => {
 }
 
 // Save last process result (attendance report data)
+// This replaces ALL previous attendance reports for the user
 export const saveLastProcessResult = async (reportData) => {
   const userId = await getUserId()
   if (!userId) throw new Error('User not authenticated')
@@ -381,9 +396,21 @@ export const saveLastProcessResult = async (reportData) => {
   const month = reportData.month || new Date().getMonth() + 1
 
   try {
+    // FIRST: Delete ALL old attendance reports for this user
+    // This ensures only the new uploaded file data is shown
+    const { error: deleteError } = await supabase
+      .from('attendance_reports')
+      .delete()
+      .eq('user_id', userId)
+    
+    if (deleteError && deleteError.code !== '42P01' && deleteError.status !== 406) {
+      console.warn('Error deleting old reports:', deleteError)
+    }
+
+    // THEN: Insert new data
     const { data, error } = await supabase
       .from('attendance_reports')
-      .upsert({
+      .insert({
         user_id: userId,
         year: year,
         month: month,
@@ -391,8 +418,6 @@ export const saveLastProcessResult = async (reportData) => {
         monthly_summary: reportData.monthly_summary || [],
         statistics: reportData.statistics || {},
         updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,year,month'
       })
       .select()
       .single()
