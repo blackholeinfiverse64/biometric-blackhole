@@ -107,8 +107,9 @@ export default function Upload() {
       }
       
       // Automatically navigate to reports page after successful upload
+      // Use direct URL navigation to force complete page reload and fresh data
       setTimeout(() => {
-        navigate('/reports', { state: { newUpload: Date.now() } })
+        window.location.href = '/reports'
       }, 1500) // Wait 1.5 seconds to show success message
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to process file. Please try again.')

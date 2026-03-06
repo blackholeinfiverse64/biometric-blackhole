@@ -75,6 +75,8 @@ export default function Reports() {
   const [loadingData, setLoadingData] = useState(true)
   const [initialLoadComplete, setInitialLoadComplete] = useState(false) // Prevent auto-save during initial load
   const lastUploadKeyRef = useRef(null) // Track new uploads to trigger refresh
+  const dataJustLoadedRef = useRef(false) // Track if data was just loaded from database (skip auto-save)
+  const hourRatesJustLoadedRef = useRef(false) // Track if hour rates were just loaded
 
   // Load all data from Supabase on component mount OR when user changes OR when new file uploaded
   useEffect(() => {
@@ -156,6 +158,8 @@ export default function Reports() {
         }
         
         // Set all other data (these are always from Supabase or empty)
+        // Mark data as just loaded to prevent immediate auto-save
+        dataJustLoadedRef.current = true
         setConfirmedSalaries(confirmed)
         setFinalizedSalaries(finalized)
         setManualUsers(manual)
@@ -176,6 +180,7 @@ export default function Reports() {
           })
         }
         setManualUserDailyRecords(mergedDailyRecords)
+        hourRatesJustLoadedRef.current = true
         setHourRates(rates)
         
         // Convert paid status from array to Set for each month
@@ -287,8 +292,16 @@ export default function Reports() {
 
   // Save confirmedSalaries to Supabase whenever they change
   // IMPORTANT: Only save AFTER initial load is complete to prevent overwriting cleared data
+  // Also skip saving if confirmedSalaries array is empty to avoid overwriting freshly cleared data
   useEffect(() => {
-    if (user && initialLoadComplete && confirmedSalaries.length >= 0) {
+    // Skip if data was just loaded from database - this prevents overwriting cleared data
+    if (dataJustLoadedRef.current) {
+      dataJustLoadedRef.current = false
+      console.log('⚠️ Skipping auto-save - data was just loaded from database')
+      return
+    }
+    
+    if (user && initialLoadComplete && confirmedSalaries.length > 0) {
       saveConfirmedSalaries(confirmedSalaries).catch(error => {
         console.error('Error saving confirmed salaries:', error)
       })
@@ -298,6 +311,12 @@ export default function Reports() {
   // Save hourRates to Supabase whenever they change
   // IMPORTANT: Only save AFTER initial load is complete to prevent race conditions
   useEffect(() => {
+    // Skip if data was just loaded from database
+    if (hourRatesJustLoadedRef.current) {
+      hourRatesJustLoadedRef.current = false
+      return
+    }
+    
     if (user && initialLoadComplete && Object.keys(hourRates).length > 0) {
       saveHourRates(hourRates).catch(error => {
         console.error('Error saving hour rates:', error)
