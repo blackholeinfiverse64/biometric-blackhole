@@ -71,6 +71,7 @@ export default function Reports() {
   const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', minutes: '', date: '' })
   const [searchQuery, setSearchQuery] = useState('') // Search query for monthly summary
   const [loadingData, setLoadingData] = useState(true)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false) // Prevent auto-save during initial load
 
   // Load all data from Supabase on component mount OR when user changes
   useEffect(() => {
@@ -222,9 +223,12 @@ export default function Reports() {
         }
       } finally {
         setLoadingData(false)
+        setInitialLoadComplete(true) // Mark initial load as complete
       }
     }
 
+    // Reset initial load flag when user changes
+    setInitialLoadComplete(false)
     loadDataFromSupabase()
   }, [user])
   
@@ -264,22 +268,24 @@ export default function Reports() {
   }, [user?.id, previousUserId])
 
   // Save confirmedSalaries to Supabase whenever they change
+  // IMPORTANT: Only save AFTER initial load is complete to prevent overwriting cleared data
   useEffect(() => {
-    if (user && confirmedSalaries.length >= 0) {
+    if (user && initialLoadComplete && confirmedSalaries.length >= 0) {
       saveConfirmedSalaries(confirmedSalaries).catch(error => {
         console.error('Error saving confirmed salaries:', error)
       })
     }
-  }, [confirmedSalaries, user])
+  }, [confirmedSalaries, user, initialLoadComplete])
 
   // Save hourRates to Supabase whenever they change
+  // IMPORTANT: Only save AFTER initial load is complete to prevent race conditions
   useEffect(() => {
-    if (user && Object.keys(hourRates).length > 0) {
+    if (user && initialLoadComplete && Object.keys(hourRates).length > 0) {
       saveHourRates(hourRates).catch(error => {
         console.error('Error saving hour rates:', error)
       })
     }
-  }, [hourRates, user])
+  }, [hourRates, user, initialLoadComplete])
 
   // Note: manualUserDailyRecords and manualUsers are saved immediately when edited
   // in the calendar edit handler, so we don't need auto-save useEffect here
