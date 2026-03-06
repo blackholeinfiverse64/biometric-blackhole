@@ -1240,8 +1240,29 @@ export default function Reports() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {emp.employee_id}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {emp.employee_name}
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap text-sm cursor-pointer hover:bg-primary-50"
+                            onClick={() => {
+                              console.log('Opening calendar for confirmed salary employee:', emp)
+                              // Check if this is a manual user and get latest data
+                              let userToShow = emp
+                              if (emp.is_manual) {
+                                const latestManualUser = manualUsers.find(u => String(u.employee_id) === String(emp.employee_id))
+                                if (latestManualUser) {
+                                  userToShow = latestManualUser
+                                }
+                              }
+                              setSelectedUserForCalendar(userToShow)
+                              setShowUserCalendar(true)
+                            }}
+                            title="Click to view date-wise attendance calendar"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <Calendar className="w-4 h-4 text-primary-600" />
+                              <span className="text-primary-600 hover:text-primary-800 hover:underline font-medium">
+                                {emp.employee_name}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                             {getHHMM(emp)} hrs
@@ -1289,7 +1310,7 @@ export default function Reports() {
                         <td colSpan="5" className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
                           Total Salary:
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 text-lg">
+                        <td className="px-6 py-4 whitespace-nowrap font-bold text-green-600 text-lg">
                           ₹{confirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0).toFixed(2)}
                         </td>
                       </tr>
@@ -2328,8 +2349,31 @@ export default function Reports() {
                                     {emp.employee_id}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`text-sm font-medium ${isPaid ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{emp.employee_name}</span>
+                                <td 
+                                  className={`px-6 py-4 whitespace-nowrap ${isPaid ? 'text-gray-500' : 'cursor-pointer hover:bg-primary-50'}`}
+                                  onClick={() => {
+                                    if (!isPaid) {
+                                      console.log('Opening calendar for finalized employee:', emp)
+                                      // Check if this is a manual user and get latest data
+                                      let userToShow = emp
+                                      if (emp.is_manual) {
+                                        const latestManualUser = manualUsers.find(u => String(u.employee_id) === String(emp.employee_id))
+                                        if (latestManualUser) {
+                                          userToShow = latestManualUser
+                                        }
+                                      }
+                                      setSelectedUserForCalendar(userToShow)
+                                      setShowUserCalendar(true)
+                                    }
+                                  }}
+                                  title={isPaid ? "This employee has been paid" : "Click to view date-wise attendance calendar"}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    {!isPaid && <Calendar className="w-4 h-4 text-primary-600" />}
+                                    <span className={`text-sm font-medium ${isPaid ? 'text-gray-500 line-through' : 'text-primary-600 hover:text-primary-800 hover:underline'}`}>
+                                      {emp.employee_name}
+                                    </span>
+                                  </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-center pointer-events-auto">
                                   {isPaid ? (
