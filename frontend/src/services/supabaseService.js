@@ -244,6 +244,20 @@ export const getHourRates = async () => {
 }
 
 // Confirmed Salaries
+
+// Clear all confirmed salaries for the current user (called when new file is uploaded)
+export const clearConfirmedSalaries = async () => {
+  const userId = await getUserId()
+  if (!userId) throw new Error('User not authenticated')
+
+  const { error } = await supabase.from('confirmed_salaries').delete().eq('user_id', userId)
+  if (error) {
+    console.error('Error clearing confirmed salaries:', error)
+    throw error
+  }
+  console.log('✅ Cleared confirmed salaries for user:', userId)
+}
+
 export const saveConfirmedSalaries = async (confirmedSalaries) => {
   const userId = await getUserId()
   if (!userId) throw new Error('User not authenticated')

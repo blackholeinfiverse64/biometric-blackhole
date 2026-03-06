@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import DateCalendar from '../components/DateCalendar'
 import config from '../config'
 import { useAuth } from '../contexts/AuthContext'
-import { saveLastProcessResult } from '../services/supabaseService'
+import { saveLastProcessResult, clearConfirmedSalaries } from '../services/supabaseService'
 
 export default function Upload() {
   const navigate = useNavigate()
@@ -72,6 +72,15 @@ export default function Upload() {
           }
           await saveLastProcessResult(reportData)
           console.log('✅ Saved to Supabase successfully')
+          
+          // Clear old confirmed salaries when new file is uploaded
+          // (Only finalized salaries are preserved)
+          try {
+            await clearConfirmedSalaries()
+            console.log('✅ Cleared old confirmed salaries (finalized salaries preserved)')
+          } catch (clearError) {
+            console.warn('⚠️ Could not clear confirmed salaries:', clearError)
+          }
           
           // Clear old localStorage data for this user (if exists)
           const userKey = `lastProcessResult_${user.id}`
