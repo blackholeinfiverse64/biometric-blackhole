@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import config from '../config'
 import { useAuth } from '../contexts/AuthContext'
@@ -36,6 +37,7 @@ const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export default function Reports() {
   const { user } = useAuth()
+  const location = useLocation()
   const [data, setData] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [hourRates, setHourRates] = useState({}) // Object with employee_id as key
@@ -72,8 +74,9 @@ export default function Reports() {
   const [searchQuery, setSearchQuery] = useState('') // Search query for monthly summary
   const [loadingData, setLoadingData] = useState(true)
   const [initialLoadComplete, setInitialLoadComplete] = useState(false) // Prevent auto-save during initial load
+  const lastUploadKeyRef = useRef(null) // Track new uploads to trigger refresh
 
-  // Load all data from Supabase on component mount OR when user changes
+  // Load all data from Supabase on component mount OR when user changes OR when new file uploaded
   useEffect(() => {
     const loadDataFromSupabase = async () => {
       if (!user) {
@@ -227,10 +230,20 @@ export default function Reports() {
       }
     }
 
+    // Check if this is a new upload navigation
+    const newUploadKey = location.state?.newUpload
+    if (newUploadKey && newUploadKey !== lastUploadKeyRef.current) {
+      lastUploadKeyRef.current = newUploadKey
+      setInitialLoadComplete(false)
+      console.log('🔄 New file uploaded - reloading data...')
+      loadDataFromSupabase()
+      return
+    }
+
     // Reset initial load flag when user changes
     setInitialLoadComplete(false)
     loadDataFromSupabase()
-  }, [user])
+  }, [user, location.state?.newUpload])
   
   // Track previous user ID to detect user changes
   const [previousUserId, setPreviousUserId] = useState(null)

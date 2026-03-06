@@ -105,7 +105,7 @@ export default function Upload() {
       
       // Automatically navigate to reports page after successful upload
       setTimeout(() => {
-        navigate('/reports')
+        navigate('/reports', { state: { newUpload: Date.now() } })
       }, 1500) // Wait 1.5 seconds to show success message
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to process file. Please try again.')
