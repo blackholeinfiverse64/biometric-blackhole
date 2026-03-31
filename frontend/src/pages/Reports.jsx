@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { Download, FileText, Users, Clock, TrendingUp, CheckCircle, Trash2, Save, Calendar, Plus, Edit2, X, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import config from '../config'
 import { useAuth } from '../contexts/AuthContext'
@@ -16,9 +15,7 @@ import {
   getManualUserDailyRecords,
   saveHourRates,
   getHourRates,
-  savePaidEmployees,
-  getPaidEmployees,
-} from '../services/supabaseService'
+} from '../services/apiService'
 import {
   BarChart,
   Bar,
@@ -37,7 +34,6 @@ const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export default function Reports() {
   const { user } = useAuth()
-  const location = useLocation()
   const [data, setData] = useState(null)
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [hourRates, setHourRates] = useState({}) // Object with employee_id as key
@@ -53,7 +49,6 @@ export default function Reports() {
   const [showDeleteFinalizedModal, setShowDeleteFinalizedModal] = useState(false)
   const [monthToDelete, setMonthToDelete] = useState('')
   const [selectedFinalizedEmployees, setSelectedFinalizedEmployees] = useState({}) // Object: { monthKey: Set of employee_ids }
-  const [paidEmployees, setPaidEmployees] = useState({}) // Object: { monthKey: Set of employee_ids } - tracks paid status
   const [manualUsers, setManualUsers] = useState([])
   const [manualUserDailyRecords, setManualUserDailyRecords] = useState({}) // Object with employee_id as key, array of daily records as value
   const [showAddManualUserModal, setShowAddManualUserModal] = useState(false)
@@ -73,12 +68,8 @@ export default function Reports() {
   const [editDayForm, setEditDayForm] = useState({ status: '', hours: '', minutes: '', date: '' })
   const [searchQuery, setSearchQuery] = useState('') // Search query for monthly summary
   const [loadingData, setLoadingData] = useState(true)
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false) // Prevent auto-save during initial load
-  const lastUploadKeyRef = useRef(null) // Track new uploads to trigger refresh
-  const dataJustLoadedRef = useRef(false) // Track if data was just loaded from database (skip auto-save)
-  const hourRatesJustLoadedRef = useRef(false) // Track if hour rates were just loaded
 
-  // Load all data from Supabase on component mount OR when user changes OR when new file uploaded
+  // Load all data from Supabase on component mount OR when user changes
   useEffect(() => {
     const loadDataFromSupabase = async () => {
       if (!user) {
@@ -89,7 +80,6 @@ export default function Reports() {
         setManualUsers([])
         setManualUserDailyRecords({})
         setHourRates({})
-        setPaidEmployees({})
         setSelectedEmployee(null)
         setLoadingData(false)
         return
@@ -104,7 +94,6 @@ export default function Reports() {
       setHourRates({})
       setSelectedEmployee(null)
       setSelectedFinalizedEmployees({})
-      setPaidEmployees({})
 
       try {
         // Load all data in parallel - all queries are user-specific via Supabase service
@@ -114,16 +103,14 @@ export default function Reports() {
           finalized,
           manual,
           dailyRecords,
-          rates,
-          paidStatus
+          rates
         ] = await Promise.all([
           getLastProcessResult().catch(() => null),
           getConfirmedSalaries().catch(() => []),
           getFinalizedSalaries().catch(() => ({})),
           getManualUsers().catch(() => []),
           getManualUserDailyRecords().catch(() => ({})),
-          getHourRates().catch(() => ({})),
-          getPaidEmployees().catch(() => ({}))
+          getHourRates().catch(() => ({}))
         ])
 
         // Set data - prioritize Supabase, fallback to localStorage
@@ -158,45 +145,18 @@ export default function Reports() {
         }
         
         // Set all other data (these are always from Supabase or empty)
-        // Mark data as just loaded to prevent immediate auto-save
-        dataJustLoadedRef.current = true
         setConfirmedSalaries(confirmed)
         setFinalizedSalaries(finalized)
         setManualUsers(manual)
-        
-        // Merge daily records: prefer loaded dailyRecords, but also sync from manual users
-        // This ensures calendar data is shown even if getManualUserDailyRecords fails
-        const mergedDailyRecords = { ...dailyRecords }
-        if (manual && Array.isArray(manual)) {
-          manual.forEach(user => {
-            const userId = String(user.employee_id)
-            // If we don't have daily records from the separate call, use the ones stored in user
-            if (!mergedDailyRecords[userId] || mergedDailyRecords[userId].length === 0) {
-              if (user.daily_records && Array.isArray(user.daily_records) && user.daily_records.length > 0) {
-                mergedDailyRecords[userId] = user.daily_records
-                console.log(`📋 Synced ${user.daily_records.length} daily records from manual user ${userId}`)
-              }
-            }
-          })
-        }
-        setManualUserDailyRecords(mergedDailyRecords)
-        hourRatesJustLoadedRef.current = true
+        setManualUserDailyRecords(dailyRecords)
         setHourRates(rates)
-        
-        // Convert paid status from array to Set for each month
-        const paidStatusSets = {}
-        Object.entries(paidStatus).forEach(([monthKey, employeeIds]) => {
-          paidStatusSets[monthKey] = new Set(employeeIds)
-        })
-        setPaidEmployees(paidStatusSets)
         
         console.log(`✅ Data loaded for user ${user.id}:`, {
           hasReports: !!lastResult,
           confirmedSalaries: confirmed.length,
           finalizedSalaries: Object.keys(finalized).length,
           manualUsers: manual.length,
-          manualUserDailyRecords: Object.keys(mergedDailyRecords).length,
-          paidEmployees: Object.keys(paidStatus).length
+          manualUserDailyRecords: Object.keys(dailyRecords).length
         })
 
         // Load expanded buckets from localStorage (UI state)
@@ -231,29 +191,11 @@ export default function Reports() {
         }
       } finally {
         setLoadingData(false)
-        setInitialLoadComplete(true) // Mark initial load as complete
       }
     }
 
-    // Check if this is a new upload navigation
-    const newUploadKey = location.state?.newUpload
-    if (newUploadKey && newUploadKey !== lastUploadKeyRef.current) {
-      lastUploadKeyRef.current = newUploadKey
-      setInitialLoadComplete(false)
-      // IMPORTANT: Clear confirmed salaries and hour rates immediately when new file is uploaded
-      // This ensures old data doesn't persist in the UI
-      setConfirmedSalaries([])
-      setHourRates({})
-      setSelectedEmployees({})
-      console.log('🔄 New file uploaded - clearing old data and reloading...')
-      loadDataFromSupabase()
-      return
-    }
-
-    // Reset initial load flag when user changes
-    setInitialLoadComplete(false)
     loadDataFromSupabase()
-  }, [user, location.state?.newUpload])
+  }, [user])
   
   // Track previous user ID to detect user changes
   const [previousUserId, setPreviousUserId] = useState(null)
@@ -291,38 +233,13 @@ export default function Reports() {
   }, [user?.id, previousUserId])
 
   // Save confirmedSalaries to Supabase whenever they change
-  // IMPORTANT: Only save AFTER initial load is complete to prevent overwriting cleared data
-  // Also skip saving if confirmedSalaries array is empty to avoid overwriting freshly cleared data
   useEffect(() => {
-    // Skip if data was just loaded from database - this prevents overwriting cleared data
-    if (dataJustLoadedRef.current) {
-      dataJustLoadedRef.current = false
-      console.log('⚠️ Skipping auto-save - data was just loaded from database')
-      return
-    }
-    
-    if (user && initialLoadComplete && confirmedSalaries.length > 0) {
+    if (user && confirmedSalaries.length >= 0) {
       saveConfirmedSalaries(confirmedSalaries).catch(error => {
         console.error('Error saving confirmed salaries:', error)
       })
     }
-  }, [confirmedSalaries, user, initialLoadComplete])
-
-  // Save hourRates to Supabase whenever they change
-  // IMPORTANT: Only save AFTER initial load is complete to prevent race conditions
-  useEffect(() => {
-    // Skip if data was just loaded from database
-    if (hourRatesJustLoadedRef.current) {
-      hourRatesJustLoadedRef.current = false
-      return
-    }
-    
-    if (user && initialLoadComplete && Object.keys(hourRates).length > 0) {
-      saveHourRates(hourRates).catch(error => {
-        console.error('Error saving hour rates:', error)
-      })
-    }
-  }, [hourRates, user, initialLoadComplete])
+  }, [confirmedSalaries, user])
 
   // Note: manualUserDailyRecords and manualUsers are saved immediately when edited
   // in the calendar edit handler, so we don't need auto-save useEffect here
@@ -395,9 +312,6 @@ export default function Reports() {
       )
     )
   }
-
-  // Filter confirmed salaries to exclude employees that are already finalized
-  const filteredConfirmedSalaries = confirmedSalaries.filter(emp => !isEmployeeFinalized(emp.employee_id))
 
   // ========== HH:MM Format Helper Functions ==========
   
@@ -733,9 +647,9 @@ export default function Reports() {
               }`}
             >
               <span>Confirmed Salaries</span>
-              {filteredConfirmedSalaries.length > 0 && (
+              {confirmedSalaries.length > 0 && (
                 <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">
-                  {filteredConfirmedSalaries.length}
+                  {confirmedSalaries.length}
                 </span>
               )}
             </button>
@@ -1054,22 +968,14 @@ export default function Reports() {
                           <button
                             onClick={() => {
                               if (confirm(`Are you sure you want to delete ${emp.employee_name} (ID: ${emp.employee_id})?`)) {
-                                // Remove from manual users - preserve daily_records for remaining users
-                                const updatedManualUsers = manualUsers
-                                  .filter(u => u.employee_id !== emp.employee_id)
-                                  .map(u => ({
-                                    ...u,
-                                    daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
-                                  }))
+                                // Remove from manual users
+                                const updatedManualUsers = manualUsers.filter(
+                                  u => u.employee_id !== emp.employee_id
+                                )
                                 setManualUsers(updatedManualUsers)
                                 saveManualUsers(updatedManualUsers).catch(error => {
                                   console.error('Error saving manual users:', error)
                                 })
-                                
-                                // Remove daily records for deleted user
-                                const updatedDailyRecords = { ...manualUserDailyRecords }
-                                delete updatedDailyRecords[String(emp.employee_id)]
-                                setManualUserDailyRecords(updatedDailyRecords)
                                 
                                 // Remove from confirmed salaries if exists
                                 setConfirmedSalaries(prev => 
@@ -1209,7 +1115,7 @@ export default function Reports() {
       {/* Confirmed Salaries Tab Content */}
       {activeTab === 'confirmed' && (
         <div className="card">
-          {filteredConfirmedSalaries.length > 0 ? (
+          {confirmedSalaries.length > 0 ? (
             <>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirmed Salaries</h3>
               <div className="bg-white rounded-lg p-4 mb-4">
@@ -1238,34 +1144,13 @@ export default function Reports() {
                       </tr>
                     </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredConfirmedSalaries.map((emp) => (
+                      {confirmedSalaries.map((emp, index) => (
                         <tr key={emp.employee_id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {emp.employee_id}
                           </td>
-                          <td 
-                            className="px-6 py-4 whitespace-nowrap text-sm cursor-pointer hover:bg-primary-50"
-                            onClick={() => {
-                              console.log('Opening calendar for confirmed salary employee:', emp)
-                              // Check if this is a manual user and get latest data
-                              let userToShow = emp
-                              if (emp.is_manual) {
-                                const latestManualUser = manualUsers.find(u => String(u.employee_id) === String(emp.employee_id))
-                                if (latestManualUser) {
-                                  userToShow = latestManualUser
-                                }
-                              }
-                              setSelectedUserForCalendar(userToShow)
-                              setShowUserCalendar(true)
-                            }}
-                            title="Click to view date-wise attendance calendar"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <Calendar className="w-4 h-4 text-primary-600" />
-                              <span className="text-primary-600 hover:text-primary-800 hover:underline font-medium">
-                                {emp.employee_name}
-                              </span>
-                            </div>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {emp.employee_name}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                             {getHHMM(emp)} hrs
@@ -1280,7 +1165,7 @@ export default function Reports() {
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => {
-                                  setSelectedEmployeeForAction({ ...emp })
+                                  setSelectedEmployeeForAction({ ...emp, index })
                                   setEditFormData({
                                     total_hours: getHHMM(emp), // Convert to HH:MM format
                                     hour_rate: emp.hour_rate ? String(emp.hour_rate) : '',
@@ -1295,7 +1180,7 @@ export default function Reports() {
                               </button>
                               <button
                                 onClick={() => {
-                                  setSelectedEmployeeForAction({ ...emp })
+                                  setSelectedEmployeeForAction({ ...emp, index })
                                   setShowDeleteModal(true)
                                 }}
                                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors duration-200 flex items-center space-x-1"
@@ -1313,8 +1198,8 @@ export default function Reports() {
                         <td colSpan="5" className="px-6 py-4 text-right text-sm font-semibold text-gray-900">
                           Total Salary:
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap font-bold text-green-600 text-lg">
-                          ₹{filteredConfirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0).toFixed(2)}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 text-lg">
+                          ₹{confirmedSalaries.reduce((sum, emp) => sum + emp.salary, 0).toFixed(2)}
                         </td>
                       </tr>
                     </tfoot>
@@ -1326,7 +1211,7 @@ export default function Reports() {
                 <div className="flex items-center justify-center space-x-4">
                   <button
                     onClick={() => {
-                      if (filteredConfirmedSalaries.length === 0) {
+                      if (confirmedSalaries.length === 0) {
                         alert('No salaries to finalize')
                         return
                       }
@@ -1350,7 +1235,7 @@ export default function Reports() {
                         )
                         
                         // Add new employees (newer entries replace older ones for same employee_id)
-                        filteredConfirmedSalaries.forEach(newEmp => {
+                        confirmedSalaries.forEach(newEmp => {
                           existingEmployeesMap.set(newEmp.employee_id, {
                             ...newEmp,
                             finalized_at: new Date().toISOString()
@@ -1361,7 +1246,7 @@ export default function Reports() {
                         updatedEmployees = Array.from(existingEmployeesMap.values())
                       } else {
                         // Month container doesn't exist - create new one
-                        updatedEmployees = filteredConfirmedSalaries.map(emp => ({
+                        updatedEmployees = confirmedSalaries.map(emp => ({
                           ...emp,
                           finalized_at: new Date().toISOString()
                         }))
@@ -1388,12 +1273,13 @@ export default function Reports() {
                       })
                       
                       const actionMessage = existingMonthData 
-                        ? `Added ${filteredConfirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
-                        : `Successfully created new ${monthKey} container with ${filteredConfirmedSalaries.length} employees`
+                        ? `Added ${confirmedSalaries.length} employees to existing ${monthKey} container. Total employees: ${updatedEmployees.length}`
+                        : `Successfully created new ${monthKey} container with ${confirmedSalaries.length} employees`
                       
-                      // Remove the finalized employees from confirmedSalaries
-                      const finalizedIds = new Set(filteredConfirmedSalaries.map(emp => emp.employee_id))
-                      setConfirmedSalaries(prev => prev.filter(emp => !finalizedIds.has(emp.employee_id)))
+                      // Clear confirmed salaries after finalizing (they're now in finalized)
+                      setConfirmedSalaries([])
+                      // Keep data and other state so user can still view monthly summary
+                      // Only clear confirmed salaries since they've been finalized
                       
                       alert(`${actionMessage}`)
                       
@@ -1546,9 +1432,9 @@ export default function Reports() {
               </button>
               <button
                 onClick={() => {
-                  // Update the confirmed salaries array using employee_id
-                  const updated = confirmedSalaries.map((emp) => {
-                    if (emp.employee_id === selectedEmployeeForAction.employee_id) {
+                  // Update the confirmed salaries array
+                  const updated = confirmedSalaries.map((emp, i) => {
+                    if (i === selectedEmployeeForAction.index) {
                       // Only update fields that have valid values, keep existing values otherwise
                       const updatedEmp = { ...emp }
                       
@@ -1579,7 +1465,7 @@ export default function Reports() {
                   setConfirmedSalaries(updated)
                   
                   // Get the updated employee data to show in form
-                  const updatedEmployee = updated.find((emp) => emp.employee_id === selectedEmployeeForAction.employee_id)
+                  const updatedEmployee = updated.find((emp, i) => i === selectedEmployeeForAction.index)
                   
                   // Update the form data with the newly updated values (keep modal open to show updated values)
                   if (updatedEmployee) {
@@ -1595,7 +1481,7 @@ export default function Reports() {
                       salary: updatedEmployee.salary ? String(updatedEmployee.salary) : ''
                     })
                     // Update selectedEmployeeForAction with the updated data
-                    setSelectedEmployeeForAction({ ...updatedEmployee })
+                    setSelectedEmployeeForAction({ ...updatedEmployee, index: selectedEmployeeForAction.index })
                   }
                   
                   alert(`Salary updated successfully for ${selectedEmployeeForAction.employee_name}!`)
@@ -1640,9 +1526,9 @@ export default function Reports() {
               </button>
               <button
                 onClick={() => {
-                  // Delete logic - remove from confirmed salaries using employee_id
+                  // Delete logic - remove from confirmed salaries and clear hour rate in monthly summary
                   setConfirmedSalaries(prev => 
-                    prev.filter((emp) => emp.employee_id !== selectedEmployeeForAction.employee_id)
+                    prev.filter((_, i) => i !== selectedEmployeeForAction.index)
                   )
                   // Clear the hour rate for this employee in monthly summary
                   setHourRates(prev => {
@@ -2289,9 +2175,6 @@ export default function Reports() {
                               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Employee Name
                               </th>
-                              <th className="px-6 py-4 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                Status
-                              </th>
                               <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Total Hours
                               </th>
@@ -2307,27 +2190,19 @@ export default function Reports() {
                             {monthData.employees.map((emp, index) => {
                               const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
                               const isSelected = selectedForMonth.has(String(emp.employee_id))
-                              const paidForMonth = paidEmployees[monthKey] || new Set()
-                              const isPaid = paidForMonth.has(String(emp.employee_id))
                               
                               return (
                               <tr 
                                 key={emp.employee_id} 
-                                className={`transition-all duration-150 ${
-                                  isPaid 
-                                    ? 'bg-gray-100 opacity-50 pointer-events-none' 
-                                    : isSelected 
-                                      ? 'bg-blue-50 border-l-4 border-blue-500 hover:bg-gray-50' 
-                                      : index % 2 === 0 
-                                        ? 'bg-white hover:bg-gray-50' 
-                                        : 'bg-gray-50/50 hover:bg-gray-50'
+                                className={`hover:bg-gray-50 transition-colors duration-150 ${
+                                  isSelected ? 'bg-blue-50 border-l-4 border-blue-500' : 
+                                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                                 }`}
                               >
-                                <td className={`px-6 py-4 whitespace-nowrap ${isPaid ? 'pointer-events-auto' : ''}`}>
+                                <td className="px-6 py-4 whitespace-nowrap">
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
-                                    disabled={isPaid}
                                     onChange={(e) => {
                                       const selectedForMonth = selectedFinalizedEmployees[monthKey] || new Set()
                                       const updatedSelection = { ...selectedFinalizedEmployees }
@@ -2342,83 +2217,30 @@ export default function Reports() {
                                       updatedSelection[monthKey] = updatedSet
                                       setSelectedFinalizedEmployees(updatedSelection)
                                     }}
-                                    className={`w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 ${isPaid ? 'cursor-not-allowed opacity-50' : ''}`}
+                                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                     onClick={(e) => e.stopPropagation()}
                                   />
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`text-sm font-semibold bg-gray-100 px-2 py-1 rounded ${isPaid ? 'text-gray-500' : 'text-gray-900'}`}>
+                                  <span className="text-sm font-semibold text-gray-900 bg-gray-100 px-2 py-1 rounded">
                                     {emp.employee_id}
                                   </span>
                                 </td>
-                                <td 
-                                  className={`px-6 py-4 whitespace-nowrap ${isPaid ? 'text-gray-500' : 'cursor-pointer hover:bg-primary-50'}`}
-                                  onClick={() => {
-                                    if (!isPaid) {
-                                      console.log('Opening calendar for finalized employee:', emp)
-                                      // Check if this is a manual user and get latest data
-                                      let userToShow = emp
-                                      if (emp.is_manual) {
-                                        const latestManualUser = manualUsers.find(u => String(u.employee_id) === String(emp.employee_id))
-                                        if (latestManualUser) {
-                                          userToShow = latestManualUser
-                                        }
-                                      }
-                                      setSelectedUserForCalendar(userToShow)
-                                      setShowUserCalendar(true)
-                                    }
-                                  }}
-                                  title={isPaid ? "This employee has been paid" : "Click to view date-wise attendance calendar"}
-                                >
-                                  <div className="flex items-center space-x-2">
-                                    {!isPaid && <Calendar className="w-4 h-4 text-primary-600" />}
-                                    <span className={`text-sm font-medium ${isPaid ? 'text-gray-500 line-through' : 'text-primary-600 hover:text-primary-800 hover:underline'}`}>
-                                      {emp.employee_name}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center pointer-events-auto">
-                                  {isPaid ? (
-                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        Paid
-                                      </span>
-                                    ) : (
-                                      <button
-                                        onClick={() => {
-                                          const updatedPaid = { ...paidEmployees }
-                                          const updatedSet = new Set(paidForMonth)
-                                          updatedSet.add(String(emp.employee_id))
-                                          updatedPaid[monthKey] = updatedSet
-                                          setPaidEmployees(updatedPaid)
-                                          
-                                          // Save to Supabase - convert Sets to arrays for storage
-                                          const paidToSave = {}
-                                          Object.entries(updatedPaid).forEach(([key, set]) => {
-                                            paidToSave[key] = Array.from(set)
-                                          })
-                                          savePaidEmployees(paidToSave).catch(error => {
-                                            console.error('Error saving paid status:', error)
-                                          })
-                                        }}
-                                        className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 hover:bg-green-100 hover:text-green-800 transition-colors duration-200"
-                                      >
-                                        Mark Paid
-                                      </button>
-                                    )}
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-sm font-medium text-gray-900">{emp.employee_name}</span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <span className={`text-sm font-medium ${isPaid ? 'text-gray-400' : 'text-gray-700'}`}>
-                                    {getHHMM(emp)} <span className={`text-xs ${isPaid ? 'text-gray-400' : 'text-gray-500'}`}>hrs</span>
+                                  <span className="text-sm text-gray-700 font-medium">
+                                    {getHHMM(emp)} <span className="text-gray-500 text-xs">hrs</span>
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <span className={`text-sm font-medium ${isPaid ? 'text-gray-400' : 'text-gray-700'}`}>
+                                  <span className="text-sm text-gray-700 font-medium">
                                     ₹{parseFloat(emp.hour_rate || 0).toFixed(2)}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right">
-                                  <span className={`text-sm font-bold ${isPaid ? 'text-gray-400' : 'text-green-600'}`}>
+                                  <span className="text-sm font-bold text-green-600">
                                     ₹{parseFloat(emp.salary || 0).toFixed(2)}
                                   </span>
                                 </td>
@@ -2428,7 +2250,7 @@ export default function Reports() {
                           </tbody>
                           <tfoot>
                             <tr className="bg-gradient-to-r from-green-50 to-green-100 border-t-2 border-green-200">
-                              <td colSpan="6" className="px-6 py-4 text-right">
+                              <td colSpan="5" className="px-6 py-4 text-right">
                                 <span className="text-base font-bold text-gray-900">Grand Total Salary:</span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -2664,26 +2486,15 @@ export default function Reports() {
                     present_days: 0,
                     absent_days: 0,
                     auto_assigned_days: 0,
-                    is_manual: true,
-                    daily_records: [] // Initialize with empty array
+                    is_manual: true
                   }
                   
                   let updatedUsers
                   if (editingManualUser) {
-                    // Update existing manual user - preserve daily_records
-                    updatedUsers = manualUsers.map(u => {
-                      if (u.employee_id === editingManualUser.employee_id) {
-                        return {
-                          ...newUser,
-                          daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
-                        }
-                      }
-                      // Preserve daily_records for other users too
-                      return {
-                        ...u,
-                        daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
-                      }
-                    })
+                    // Update existing manual user
+                    updatedUsers = manualUsers.map(u => 
+                      u.employee_id === editingManualUser.employee_id ? newUser : u
+                    )
                   } else {
                     // Check if ID already exists
                     if (manualUsers.find(u => u.employee_id === newUser.employee_id) || 
@@ -2691,14 +2502,7 @@ export default function Reports() {
                       alert('Employee ID already exists')
                       return
                     }
-                    // Add new user, preserve daily_records for existing users
-                    updatedUsers = [
-                      ...manualUsers.map(u => ({
-                        ...u,
-                        daily_records: manualUserDailyRecords[String(u.employee_id)] || u.daily_records || []
-                      })),
-                      newUser
-                    ]
+                    updatedUsers = [...manualUsers, newUser]
                   }
                   
                   setManualUsers(updatedUsers)
@@ -3349,7 +3153,7 @@ export default function Reports() {
                         }
                       })
 
-                      // Update manual user in the list - include daily_records for proper persistence
+                      // Update manual user in the list
                       const updatedManualUsers = manualUsers.map(u => {
                         if (String(u.employee_id) === userId) {
                           return {
@@ -3357,16 +3161,10 @@ export default function Reports() {
                             total_hours: totalHoursHHMM, // Store as HH:MM format
                             present_days: presentDays,
                             absent_days: absentDays,
-                            auto_assigned_days: autoAssignedDays,
-                            daily_records: updatedRecords // Include daily records for persistence
+                            auto_assigned_days: autoAssignedDays
                           }
                         }
-                        // For other users, ensure their daily_records are included
-                        const otherUserId = String(u.employee_id)
-                        return {
-                          ...u,
-                          daily_records: manualUserDailyRecords[otherUserId] || u.daily_records || []
-                        }
+                        return u
                       })
 
                       setManualUsers(updatedManualUsers)

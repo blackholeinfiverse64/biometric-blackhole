@@ -5,7 +5,6 @@ import Layout from './components/Layout'
 import Upload from './pages/Upload'
 import Reports from './pages/Reports'
 import Auth from './pages/Auth'
-import { supabaseConfigured } from './lib/supabase'
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -126,7 +125,7 @@ function AppRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <AppRoutes />
       </AuthProvider>

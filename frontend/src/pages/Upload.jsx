@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom'
 import DateCalendar from '../components/DateCalendar'
 import config from '../config'
 import { useAuth } from '../contexts/AuthContext'
-import { saveLastProcessResult, clearConfirmedSalaries, clearHourRates } from '../services/supabaseService'
+import { saveLastProcessResult, clearAllData } from '../services/apiService'
+import { getToken } from '../lib/auth'
 
 export default function Upload() {
   const navigate = useNavigate()
@@ -54,62 +55,37 @@ export default function Upload() {
     formData.append('selected_dates', JSON.stringify(selectedDates))
 
     try {
+      const token = getToken()
       const response = await axios.post(config.getApiUrl('/api/process'), formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       })
 
       setResult(response.data)
       
-      // Save to Supabase if user is authenticated
       if (user && response.data) {
         try {
+          await clearAllData()
           const reportData = {
             ...response.data,
             year: year,
             month: month
           }
           await saveLastProcessResult(reportData)
-          console.log('✅ Saved to Supabase successfully')
-          
-          // Clear old confirmed salaries and hour rates when new file is uploaded
-          // (Only finalized salaries are preserved)
-          try {
-            await Promise.all([
-              clearConfirmedSalaries(),
-              clearHourRates()
-            ])
-            console.log('✅ Cleared old confirmed salaries and hour rates (finalized salaries preserved)')
-          } catch (clearError) {
-            console.warn('⚠️ Could not clear old data:', clearError)
-          }
-          
-          // Clear old localStorage data for this user (if exists)
-          const userKey = `lastProcessResult_${user.id}`
-          localStorage.removeItem(userKey) // Remove user-specific key
-          // Also remove old global key if it exists (migration cleanup)
           localStorage.removeItem('lastProcessResult')
-        } catch (supabaseError) {
-          console.error('Error saving to Supabase:', supabaseError)
-          // Fallback to user-specific localStorage if Supabase fails
-          if (user) {
-            const userKey = `lastProcessResult_${user.id}`
-            localStorage.setItem(userKey, JSON.stringify(response.data))
-            console.log('⚠️ Saved to localStorage as fallback (user-specific)')
-          } else {
-            localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
-          }
+        } catch (saveError) {
+          console.error('Error saving report:', saveError)
+          localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
         }
       } else {
-        // Fallback to localStorage if not authenticated
-      localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
+        localStorage.setItem('lastProcessResult', JSON.stringify(response.data))
       }
       
       // Automatically navigate to reports page after successful upload
-      // Use direct URL navigation to force complete page reload and fresh data
       setTimeout(() => {
-        window.location.href = '/reports'
+        navigate('/reports')
       }, 1500) // Wait 1.5 seconds to show success message
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to process file. Please try again.')
