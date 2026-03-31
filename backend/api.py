@@ -33,25 +33,10 @@ ALLOWED_ORIGINS = [
 ]
 
 CORS(app,
-     resources={
-         r"/api/*": {
-             "origins": ALLOWED_ORIGINS,
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
-             "supports_credentials": False
-         }
-     })
-
-@app.after_request
-def after_request(response):
-    if request.path.startswith('/api/'):
-        origin = request.headers.get('Origin')
-        if origin in ALLOWED_ORIGINS:
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-            response.headers['Access-Control-Max-Age'] = '3600'
-    return response
+     resources={r"/api/*": {"origins": ALLOWED_ORIGINS}},
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     max_age=3600)
 
 UPLOAD_FOLDER = tempfile.mkdtemp()
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -111,18 +96,6 @@ def health_check():
 # ---------------------------------------------------------------------------
 # Attendance processing (existing endpoints, now JWT-protected)
 # ---------------------------------------------------------------------------
-
-@app.route('/api/process', methods=['OPTIONS'])
-def process_attendance_options():
-    response = jsonify({})
-    origin = request.headers.get('Origin')
-    if origin in ALLOWED_ORIGINS:
-        response.headers.add('Access-Control-Allow-Origin', origin)
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
-        response.headers.add('Access-Control-Max-Age', '3600')
-    return response
-
 
 @app.route('/api/process', methods=['POST'])
 @jwt_required
@@ -199,18 +172,6 @@ def process_attendance():
         if 'temp_input' in locals() and os.path.exists(temp_input):
             os.remove(temp_input)
         return jsonify({"error": str(e)}), 500
-
-
-@app.route('/api/download', methods=['OPTIONS'])
-def download_file_options():
-    response = jsonify({})
-    origin = request.headers.get('Origin')
-    if origin in ALLOWED_ORIGINS:
-        response.headers.add('Access-Control-Allow-Origin', origin)
-        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        response.headers.add('Access-Control-Max-Age', '3600')
-    return response
 
 
 @app.route('/api/download', methods=['GET'])
