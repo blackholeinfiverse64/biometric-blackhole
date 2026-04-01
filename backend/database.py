@@ -8,7 +8,13 @@ import os
 import json
 from datetime import datetime
 
-DB_PATH = os.environ.get('DATABASE_PATH', os.path.join(os.path.dirname(__file__), 'attendance.db'))
+def _default_db_path():
+    render_disk = '/data'
+    if os.path.isdir(render_disk):
+        return os.path.join(render_disk, 'attendance.db')
+    return os.path.join(os.path.dirname(__file__), 'attendance.db')
+
+DB_PATH = os.environ.get('DATABASE_PATH', _default_db_path())
 
 
 def get_db():
