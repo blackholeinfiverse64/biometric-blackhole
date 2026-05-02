@@ -4,6 +4,7 @@ Uses PyMongo to connect to MongoDB Atlas.
 """
 
 import os
+import certifi
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from datetime import datetime
 
@@ -19,7 +20,7 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        _client = MongoClient(MONGO_URI)
+        _client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
     return _client
 
 
