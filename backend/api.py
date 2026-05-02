@@ -1,7 +1,7 @@
 """
 Flask API Backend for Attendance Processing System
 Provides REST API endpoints for the React frontend.
-Uses JWT authentication and SQLite for data storage.
+Uses JWT authentication and MongoDB for data storage.
 """
 
 from flask import Flask, request, jsonify, send_file, g
@@ -224,7 +224,7 @@ def get_statistics():
         return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------------------------
-# Data CRUD endpoints (replace Supabase client-side queries)
+# Data CRUD endpoints (MongoDB)
 # ---------------------------------------------------------------------------
 
 # --- Attendance Reports ---
@@ -237,30 +237,26 @@ def save_attendance_report():
         return jsonify({'error': 'No data provided'}), 400
 
     db = get_db()
-    try:
-        db.execute("""
-            INSERT INTO attendance_reports (user_id, year, month, daily_report, monthly_summary, statistics, output_file, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, year, month) DO UPDATE SET
-                daily_report=excluded.daily_report,
-                monthly_summary=excluded.monthly_summary,
-                statistics=excluded.statistics,
-                output_file=excluded.output_file,
-                updated_at=excluded.updated_at
-        """, (
-            g.user_id,
-            data.get('year'),
-            data.get('month'),
-            json.dumps(data.get('daily_report', [])),
-            json.dumps(data.get('monthly_summary', [])),
-            json.dumps(data.get('statistics', {})),
-            data.get('output_file'),
-            datetime.utcnow().isoformat(),
-        ))
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+    now = datetime.utcnow().isoformat()
+
+    db.attendance_reports.update_one(
+        {'user_id': g.user_id, 'year': data.get('year'), 'month': data.get('month')},
+        {'$set': {
+            'daily_report': data.get('daily_report', []),
+            'monthly_summary': data.get('monthly_summary', []),
+            'statistics': data.get('statistics', {}),
+            'output_file': data.get('output_file'),
+            'updated_at': now,
+        },
+         '$setOnInsert': {
+            'user_id': g.user_id,
+            'year': data.get('year'),
+            'month': data.get('month'),
+            'created_at': now,
+        }},
+        upsert=True,
+    )
+    return jsonify({'success': True})
 
 
 @app.route('/api/data/attendance-reports', methods=['GET'])
@@ -270,59 +266,52 @@ def get_attendance_report():
     month = request.args.get('month', type=int)
 
     db = get_db()
-    try:
-        if year and month:
-            row = db.execute(
-                'SELECT * FROM attendance_reports WHERE user_id=? AND year=? AND month=?',
-                (g.user_id, year, month)
-            ).fetchone()
-            if not row:
-                return jsonify(None)
-            return jsonify(_report_row_to_dict(row))
-        else:
-            rows = db.execute(
-                'SELECT * FROM attendance_reports WHERE user_id=? ORDER BY updated_at DESC',
-                (g.user_id,)
-            ).fetchall()
-            return jsonify([_report_row_to_dict(r) for r in rows])
-    finally:
-        db.close()
+
+    if year and month:
+        doc = db.attendance_reports.find_one(
+            {'user_id': g.user_id, 'year': year, 'month': month}
+        )
+        if not doc:
+            return jsonify(None)
+        return jsonify(_report_doc_to_dict(doc))
+    else:
+        docs = db.attendance_reports.find(
+            {'user_id': g.user_id}
+        ).sort('updated_at', -1)
+        return jsonify([_report_doc_to_dict(d) for d in docs])
 
 
 @app.route('/api/data/last-process-result', methods=['GET'])
 @jwt_required
 def get_last_process_result():
     db = get_db()
-    try:
-        row = db.execute(
-            'SELECT * FROM attendance_reports WHERE user_id=? ORDER BY updated_at DESC LIMIT 1',
-            (g.user_id,)
-        ).fetchone()
-        if not row:
-            return jsonify(None)
-        return jsonify({
-            'daily_report': json.loads(row['daily_report'] or '[]'),
-            'monthly_summary': json.loads(row['monthly_summary'] or '[]'),
-            'statistics': json.loads(row['statistics'] or '{}'),
-            'year': row['year'],
-            'month': row['month'],
-        })
-    finally:
-        db.close()
+    doc = db.attendance_reports.find_one(
+        {'user_id': g.user_id},
+        sort=[('updated_at', -1)],
+    )
+    if not doc:
+        return jsonify(None)
+    return jsonify({
+        'daily_report': doc.get('daily_report', []),
+        'monthly_summary': doc.get('monthly_summary', []),
+        'statistics': doc.get('statistics', {}),
+        'year': doc.get('year'),
+        'month': doc.get('month'),
+    })
 
 
-def _report_row_to_dict(row):
+def _report_doc_to_dict(doc):
     return {
-        'id': row['id'],
-        'user_id': row['user_id'],
-        'year': row['year'],
-        'month': row['month'],
-        'daily_report': json.loads(row['daily_report'] or '[]'),
-        'monthly_summary': json.loads(row['monthly_summary'] or '[]'),
-        'statistics': json.loads(row['statistics'] or '{}'),
-        'output_file': row['output_file'],
-        'created_at': row['created_at'],
-        'updated_at': row['updated_at'],
+        'id': str(doc['_id']),
+        'user_id': doc['user_id'],
+        'year': doc.get('year'),
+        'month': doc.get('month'),
+        'daily_report': doc.get('daily_report', []),
+        'monthly_summary': doc.get('monthly_summary', []),
+        'statistics': doc.get('statistics', {}),
+        'output_file': doc.get('output_file'),
+        'created_at': doc.get('created_at', ''),
+        'updated_at': doc.get('updated_at', ''),
     }
 
 # --- Manual Users ---
@@ -331,37 +320,31 @@ def _report_row_to_dict(row):
 @jwt_required
 def get_manual_users():
     db = get_db()
-    try:
-        rows = db.execute(
-            'SELECT * FROM manual_users WHERE user_id=? ORDER BY created_at ASC',
-            (g.user_id,)
-        ).fetchall()
+    docs = db.manual_users.find({'user_id': g.user_id}).sort('created_at', 1)
 
-        result = []
-        for row in rows:
-            total_hours = row['total_hours'] or 0
-            if isinstance(total_hours, (int, float)):
-                hours = int(total_hours)
-                minutes = round((total_hours - hours) * 60)
-                total_hours_str = f"{hours}:{str(minutes).zfill(2)}"
-            else:
-                total_hours_str = str(total_hours)
+    result = []
+    for doc in docs:
+        total_hours = doc.get('total_hours', 0) or 0
+        if isinstance(total_hours, (int, float)):
+            hours = int(total_hours)
+            minutes = round((total_hours - hours) * 60)
+            total_hours_str = f"{hours}:{str(minutes).zfill(2)}"
+        else:
+            total_hours_str = str(total_hours)
 
-            result.append({
-                'id': row['id'],
-                'employee_id': row['employee_id'],
-                'employee_name': row['employee_name'],
-                'total_hours': total_hours_str,
-                'hour_rate': row['hour_rate'],
-                'present_days': row['present_days'],
-                'absent_days': row['absent_days'],
-                'auto_assigned_days': row['auto_assigned_days'],
-                'daily_records': json.loads(row['daily_records'] or '[]'),
-                'is_manual': True,
-            })
-        return jsonify(result)
-    finally:
-        db.close()
+        result.append({
+            'id': str(doc['_id']),
+            'employee_id': doc.get('employee_id'),
+            'employee_name': doc.get('employee_name', ''),
+            'total_hours': total_hours_str,
+            'hour_rate': doc.get('hour_rate'),
+            'present_days': doc.get('present_days', 0),
+            'absent_days': doc.get('absent_days', 0),
+            'auto_assigned_days': doc.get('auto_assigned_days', 0),
+            'daily_records': doc.get('daily_records', []),
+            'is_manual': True,
+        })
+    return jsonify(result)
 
 
 @app.route('/api/data/manual-users', methods=['POST'])
@@ -372,32 +355,28 @@ def save_manual_users():
         return jsonify({'error': 'No data provided'}), 400
 
     db = get_db()
-    try:
-        db.execute('DELETE FROM manual_users WHERE user_id=?', (g.user_id,))
+    db.manual_users.delete_many({'user_id': g.user_id})
 
-        for u in users:
-            th = u.get('total_hours', 0)
-            if isinstance(th, str):
-                th = float(th.replace(':', '.')) if th else 0
-            db.execute("""
-                INSERT INTO manual_users
-                    (user_id, employee_id, employee_name, total_hours, hour_rate, present_days, absent_days, auto_assigned_days, daily_records)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                g.user_id,
-                u.get('employee_id'),
-                u.get('employee_name', ''),
-                th,
-                float(u['hour_rate']) if u.get('hour_rate') else None,
-                u.get('present_days', 0),
-                u.get('absent_days', 0),
-                u.get('auto_assigned_days', 0),
-                json.dumps(u.get('daily_records', [])),
-            ))
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+    now = datetime.utcnow().isoformat()
+    for u in users:
+        th = u.get('total_hours', 0)
+        if isinstance(th, str):
+            th = float(th.replace(':', '.')) if th else 0
+
+        db.manual_users.insert_one({
+            'user_id': g.user_id,
+            'employee_id': u.get('employee_id'),
+            'employee_name': u.get('employee_name', ''),
+            'total_hours': th,
+            'hour_rate': float(u['hour_rate']) if u.get('hour_rate') else None,
+            'present_days': u.get('present_days', 0),
+            'absent_days': u.get('absent_days', 0),
+            'auto_assigned_days': u.get('auto_assigned_days', 0),
+            'daily_records': u.get('daily_records', []),
+            'created_at': now,
+            'updated_at': now,
+        })
+    return jsonify({'success': True})
 
 # --- Manual User Daily Records ---
 
@@ -405,19 +384,16 @@ def save_manual_users():
 @jwt_required
 def get_manual_user_daily_records():
     db = get_db()
-    try:
-        rows = db.execute(
-            'SELECT employee_id, daily_records FROM manual_users WHERE user_id=?',
-            (g.user_id,)
-        ).fetchall()
-        result = {}
-        for row in rows:
-            emp_id = str(row['employee_id'])
-            records = json.loads(row['daily_records'] or '[]')
-            result[emp_id] = records if isinstance(records, list) else []
-        return jsonify(result)
-    finally:
-        db.close()
+    docs = db.manual_users.find(
+        {'user_id': g.user_id},
+        {'employee_id': 1, 'daily_records': 1}
+    )
+    result = {}
+    for doc in docs:
+        emp_id = str(doc.get('employee_id', ''))
+        records = doc.get('daily_records', [])
+        result[emp_id] = records if isinstance(records, list) else []
+    return jsonify(result)
 
 
 @app.route('/api/data/manual-user-daily-records', methods=['POST'])
@@ -428,27 +404,22 @@ def save_manual_user_daily_records():
         return jsonify({'error': 'No data provided'}), 400
 
     db = get_db()
-    try:
-        manual_users = db.execute(
-            'SELECT id, employee_id FROM manual_users WHERE user_id=?',
-            (g.user_id,)
-        ).fetchall()
+    now = datetime.utcnow().isoformat()
 
-        for emp_id_str, records in daily_records.items():
+    for emp_id_str, records in daily_records.items():
+        try:
             emp_id_num = int(emp_id_str)
-            mu = next(
-                (m for m in manual_users if m['employee_id'] == emp_id_num or str(m['employee_id']) == emp_id_str),
-                None
-            )
-            if mu:
-                db.execute(
-                    'UPDATE manual_users SET daily_records=?, updated_at=? WHERE id=?',
-                    (json.dumps(records), datetime.utcnow().isoformat(), mu['id'])
-                )
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+        except ValueError:
+            emp_id_num = emp_id_str
+
+        db.manual_users.update_one(
+            {'user_id': g.user_id, '$or': [
+                {'employee_id': emp_id_num},
+                {'employee_id': emp_id_str},
+            ]},
+            {'$set': {'daily_records': records, 'updated_at': now}},
+        )
+    return jsonify({'success': True})
 
 # --- Finalized Salaries ---
 
@@ -456,23 +427,20 @@ def save_manual_user_daily_records():
 @jwt_required
 def get_finalized_salaries():
     db = get_db()
-    try:
-        rows = db.execute(
-            'SELECT * FROM finalized_salaries WHERE user_id=? ORDER BY finalized_at DESC',
-            (g.user_id,)
-        ).fetchall()
-        result = {}
-        for row in rows:
-            result[row['month_key']] = {
-                'month': row['month'],
-                'year': row['year'],
-                'finalized_at': row['finalized_at'],
-                'employees': json.loads(row['employees'] or '[]'),
-                'total_salary': row['total_salary'],
-            }
-        return jsonify(result)
-    finally:
-        db.close()
+    docs = db.finalized_salaries.find(
+        {'user_id': g.user_id}
+    ).sort('finalized_at', -1)
+
+    result = {}
+    for doc in docs:
+        result[doc['month_key']] = {
+            'month': doc.get('month'),
+            'year': doc.get('year'),
+            'finalized_at': doc.get('finalized_at'),
+            'employees': doc.get('employees', []),
+            'total_salary': doc.get('total_salary', 0),
+        }
+    return jsonify(result)
 
 
 @app.route('/api/data/finalized-salaries', methods=['POST'])
@@ -483,25 +451,21 @@ def save_finalized_salaries():
         return jsonify({'error': 'No data provided'}), 400
 
     db = get_db()
-    try:
-        db.execute('DELETE FROM finalized_salaries WHERE user_id=?', (g.user_id,))
-        for month_key, info in data.items():
-            db.execute("""
-                INSERT INTO finalized_salaries (user_id, month_key, month, year, employees, total_salary, finalized_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                g.user_id,
-                month_key,
-                info.get('month'),
-                info.get('year'),
-                json.dumps(info.get('employees', [])),
-                info.get('total_salary', 0),
-                info.get('finalized_at'),
-            ))
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+    db.finalized_salaries.delete_many({'user_id': g.user_id})
+
+    now = datetime.utcnow().isoformat()
+    for month_key, info in data.items():
+        db.finalized_salaries.insert_one({
+            'user_id': g.user_id,
+            'month_key': month_key,
+            'month': info.get('month'),
+            'year': info.get('year'),
+            'employees': info.get('employees', []),
+            'total_salary': info.get('total_salary', 0),
+            'finalized_at': info.get('finalized_at'),
+            'created_at': now,
+        })
+    return jsonify({'success': True})
 
 # --- Confirmed Salaries ---
 
@@ -509,21 +473,18 @@ def save_finalized_salaries():
 @jwt_required
 def get_confirmed_salaries():
     db = get_db()
-    try:
-        rows = db.execute(
-            'SELECT * FROM confirmed_salaries WHERE user_id=? ORDER BY confirmed_at DESC',
-            (g.user_id,)
-        ).fetchall()
-        return jsonify([{
-            'employee_id': r['employee_id'],
-            'employee_name': r['employee_name'],
-            'total_hours': r['total_hours'],
-            'hour_rate': r['hour_rate'],
-            'salary': r['salary'],
-            'confirmed_at': r['confirmed_at'],
-        } for r in rows])
-    finally:
-        db.close()
+    docs = db.confirmed_salaries.find(
+        {'user_id': g.user_id}
+    ).sort('confirmed_at', -1)
+
+    return jsonify([{
+        'employee_id': d.get('employee_id'),
+        'employee_name': d.get('employee_name'),
+        'total_hours': d.get('total_hours'),
+        'hour_rate': d.get('hour_rate'),
+        'salary': d.get('salary'),
+        'confirmed_at': d.get('confirmed_at'),
+    } for d in docs])
 
 
 @app.route('/api/data/confirmed-salaries', methods=['POST'])
@@ -534,25 +495,21 @@ def save_confirmed_salaries():
         return jsonify({'error': 'No data provided'}), 400
 
     db = get_db()
-    try:
-        db.execute('DELETE FROM confirmed_salaries WHERE user_id=?', (g.user_id,))
-        for s in salaries:
-            db.execute("""
-                INSERT INTO confirmed_salaries (user_id, employee_id, employee_name, total_hours, hour_rate, salary, confirmed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                g.user_id,
-                s.get('employee_id'),
-                s.get('employee_name'),
-                s.get('total_hours'),
-                s.get('hour_rate'),
-                s.get('salary'),
-                s.get('confirmed_at', datetime.utcnow().isoformat()),
-            ))
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+    db.confirmed_salaries.delete_many({'user_id': g.user_id})
+
+    now = datetime.utcnow().isoformat()
+    for s in salaries:
+        db.confirmed_salaries.insert_one({
+            'user_id': g.user_id,
+            'employee_id': s.get('employee_id'),
+            'employee_name': s.get('employee_name'),
+            'total_hours': s.get('total_hours'),
+            'hour_rate': s.get('hour_rate'),
+            'salary': s.get('salary'),
+            'confirmed_at': s.get('confirmed_at', now),
+            'created_at': now,
+        })
+    return jsonify({'success': True})
 
 # --- Hour Rates ---
 
@@ -560,17 +517,12 @@ def save_confirmed_salaries():
 @jwt_required
 def get_hour_rates():
     db = get_db()
-    try:
-        rows = db.execute(
-            'SELECT employee_id, hour_rate FROM hour_rates WHERE user_id=?',
-            (g.user_id,)
-        ).fetchall()
-        result = {}
-        for r in rows:
-            result[str(r['employee_id'])] = r['hour_rate']
-        return jsonify(result)
-    finally:
-        db.close()
+    docs = db.hour_rates.find({'user_id': g.user_id})
+
+    result = {}
+    for d in docs:
+        result[str(d['employee_id'])] = d['hour_rate']
+    return jsonify(result)
 
 
 @app.route('/api/data/hour-rates', methods=['POST'])
@@ -581,19 +533,23 @@ def save_hour_rates():
         return jsonify({'error': 'No data provided'}), 400
 
     db = get_db()
-    try:
-        for emp_id_str, rate in rates.items():
-            db.execute("""
-                INSERT INTO hour_rates (user_id, employee_id, hour_rate, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id, employee_id) DO UPDATE SET
-                    hour_rate=excluded.hour_rate,
-                    updated_at=excluded.updated_at
-            """, (g.user_id, int(emp_id_str), float(rate), datetime.utcnow().isoformat()))
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+    now = datetime.utcnow().isoformat()
+
+    for emp_id_str, rate in rates.items():
+        db.hour_rates.update_one(
+            {'user_id': g.user_id, 'employee_id': int(emp_id_str)},
+            {'$set': {
+                'hour_rate': float(rate),
+                'updated_at': now,
+            },
+             '$setOnInsert': {
+                'user_id': g.user_id,
+                'employee_id': int(emp_id_str),
+                'created_at': now,
+            }},
+            upsert=True,
+        )
+    return jsonify({'success': True})
 
 
 # --- Clear all user data (used when uploading a new file) ---
@@ -602,16 +558,12 @@ def save_hour_rates():
 @jwt_required
 def clear_all_user_data():
     db = get_db()
-    try:
-        db.execute('DELETE FROM attendance_reports WHERE user_id=?', (g.user_id,))
-        db.execute('DELETE FROM manual_users WHERE user_id=?', (g.user_id,))
-        db.execute('DELETE FROM confirmed_salaries WHERE user_id=?', (g.user_id,))
-        db.execute('DELETE FROM finalized_salaries WHERE user_id=?', (g.user_id,))
-        db.execute('DELETE FROM hour_rates WHERE user_id=?', (g.user_id,))
-        db.commit()
-        return jsonify({'success': True})
-    finally:
-        db.close()
+    db.attendance_reports.delete_many({'user_id': g.user_id})
+    db.manual_users.delete_many({'user_id': g.user_id})
+    db.confirmed_salaries.delete_many({'user_id': g.user_id})
+    db.finalized_salaries.delete_many({'user_id': g.user_id})
+    db.hour_rates.delete_many({'user_id': g.user_id})
+    return jsonify({'success': True})
 
 # ---------------------------------------------------------------------------
 

@@ -1,6 +1,7 @@
 """
 JWT Authentication module.
 Handles user registration, login, and token verification.
+Uses MongoDB for user storage.
 """
 
 import jwt
@@ -9,6 +10,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import request, jsonify, g
+from bson import ObjectId
 from database import get_db
 
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'change-this-secret-in-production-use-a-long-random-string')
@@ -22,7 +24,7 @@ def hash_password(password):
 
 def create_token(user_id, email, role):
     payload = {
-        'user_id': user_id,
+        'user_id': str(user_id),
         'email': email,
         'role': role,
         'exp': datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRY_HOURS),
@@ -61,6 +63,17 @@ def jwt_required(f):
     return decorated
 
 
+def _user_doc_to_dict(doc):
+    """Convert a MongoDB user document to a JSON-safe dict."""
+    return {
+        'id': str(doc['_id']),
+        'email': doc['email'],
+        'full_name': doc['full_name'],
+        'role': doc['role'],
+        'created_at': doc.get('created_at', ''),
+    }
+
+
 def register_user(email, password, full_name, role='employee'):
     if not email or not password or not full_name:
         return None, 'Email, password, and full name are required'
@@ -75,34 +88,28 @@ def register_user(email, password, full_name, role='employee'):
 
     db = get_db()
     try:
-        existing = db.execute('SELECT id FROM users WHERE email = ?', (email_lower,)).fetchone()
+        existing = db.users.find_one({'email': email_lower})
         if existing:
-            db.close()
             return None, 'An account with this email already exists'
 
-        pw_hash = hash_password(password)
-        cursor = db.execute(
-            'INSERT INTO users (email, password_hash, full_name, role) VALUES (?, ?, ?, ?)',
-            (email_lower, pw_hash, full_name.strip(), role)
-        )
-        db.commit()
-        user_id = cursor.lastrowid
+        now = datetime.utcnow().isoformat()
+        result = db.users.insert_one({
+            'email': email_lower,
+            'password_hash': hash_password(password),
+            'full_name': full_name.strip(),
+            'role': role,
+            'created_at': now,
+            'updated_at': now,
+        })
 
-        user = db.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-        db.close()
+        user_doc = db.users.find_one({'_id': result.inserted_id})
+        token = create_token(user_doc['_id'], email_lower, role)
 
-        token = create_token(user_id, email_lower, role)
         return {
             'token': token,
-            'user': {
-                'id': user['id'],
-                'email': user['email'],
-                'full_name': user['full_name'],
-                'role': user['role'],
-            }
+            'user': _user_doc_to_dict(user_doc),
         }, None
     except Exception as e:
-        db.close()
         return None, str(e)
 
 
@@ -114,31 +121,24 @@ def login_user(email, password):
     pw_hash = hash_password(password)
 
     db = get_db()
-    user = db.execute(
-        'SELECT * FROM users WHERE email = ? AND password_hash = ?',
-        (email_lower, pw_hash)
-    ).fetchone()
-    db.close()
+    user_doc = db.users.find_one({'email': email_lower, 'password_hash': pw_hash})
 
-    if not user:
+    if not user_doc:
         return None, 'Invalid email or password'
 
-    token = create_token(user['id'], user['email'], user['role'])
+    token = create_token(user_doc['_id'], user_doc['email'], user_doc['role'])
     return {
         'token': token,
-        'user': {
-            'id': user['id'],
-            'email': user['email'],
-            'full_name': user['full_name'],
-            'role': user['role'],
-        }
+        'user': _user_doc_to_dict(user_doc),
     }, None
 
 
 def get_user_profile(user_id):
     db = get_db()
-    user = db.execute('SELECT id, email, full_name, role, created_at FROM users WHERE id = ?', (user_id,)).fetchone()
-    db.close()
-    if not user:
+    try:
+        user_doc = db.users.find_one({'_id': ObjectId(user_id)})
+    except Exception:
         return None
-    return dict(user)
+    if not user_doc:
+        return None
+    return _user_doc_to_dict(user_doc)

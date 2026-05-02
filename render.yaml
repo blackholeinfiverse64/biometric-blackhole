@@ -14,9 +14,6 @@ services:
         generateValue: true
       - key: PASSWORD_SALT
         generateValue: true
+      - key: MONGODB_URI
+        value: mongodb+srv://blackholeauth_db_user:blackhole_biometric@cluster0.1kdzvsi.mongodb.net/
     healthCheckPath: /api/health
-    disk:
-      name: biometric-data
-      mountPath: /data
-      sizeGB: 1
-
